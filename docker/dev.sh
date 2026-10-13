@@ -3,10 +3,22 @@
 #   docker/dev.sh                      interactive shell
 #   docker/dev.sh ./build.sh --debug   host build, output lands in build/
 #   docker/dev.sh android/gradlew -p android assembleDebug
+#   docker/dev.sh --gpu vulkaninfo --summary   expose the host GPU (Linux, /dev/dri)
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 image="${XEMU_DEV_IMAGE:-x1box-dev}"
+
+gpu_flags=()
+if [ "${1:-}" = "--gpu" ]; then
+    shift
+    if [ ! -e /dev/dri/renderD128 ]; then
+        echo "dev.sh: --gpu needs /dev/dri/renderD128 on the host" >&2
+        exit 1
+    fi
+    # Pass the host render group so the container user can open the render node.
+    gpu_flags=(--device /dev/dri --group-add "$(stat -c '%g' /dev/dri/renderD128)")
+fi
 
 uid="$(id -u)"
 gid="$(id -g)"
@@ -27,7 +39,7 @@ if [ -t 0 ] && [ -t 1 ]; then
 fi
 
 # Named volumes keep the Gradle, Cargo and ccache state between runs.
-exec docker run --rm "${tty_flags[@]}" \
+exec docker run --rm "${tty_flags[@]}" "${gpu_flags[@]}" \
     -v "$repo:/work" \
     -v x1box-gradle:/home/dev/.gradle \
     -v x1box-cargo:/opt/cargo/registry \

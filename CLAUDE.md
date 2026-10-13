@@ -8,7 +8,7 @@ X1 BOX (`com.izzy2lost.x1box`) is an original Xbox emulator for Android, forked 
 
 ## Build Commands
 
-The supported dev environment is Docker. `docker/dev.sh <command>` builds the `x1box-dev` image from `docker/Dockerfile` and runs the command in `/work` (this repo, bind-mounted). Nothing else needs to be installed on the host. Commands below can be run through it, e.g. `docker/dev.sh ./build.sh --debug` or `docker/dev.sh bash -c 'cd android && ./gradlew assembleDebug'`. Gradle, Cargo and ccache state persist in named volumes. The image pins Ubuntu 22.04, SDL3 3.4.10 and Vulkan-Headers 1.4.309.0, so the host build does not use the meson SDL3 fallback, which does not resolve.
+The supported dev environment is Docker. `docker/dev.sh <command>` builds the `x1box-dev` image from `docker/Dockerfile` and runs the command in `/work` (this repo, bind-mounted). Nothing else needs to be installed on the host. Commands below can be run through it, e.g. `docker/dev.sh ./build.sh --debug` or `docker/dev.sh bash -c 'cd android && ./gradlew assembleDebug'`. Gradle, Cargo and ccache state persist in named volumes. `docker/dev.sh --gpu <command>` also passes the host's `/dev/dri` render node into the container (Linux only) for Vulkan: `docker/dev.sh --gpu vulkaninfo --summary` lists the Mesa RADV device. The image pins Ubuntu 22.04, SDL3 3.4.10 and Vulkan-Headers 1.4.309.0, so the host build does not use the meson SDL3 fallback, which does not resolve.
 
 ### Android (primary target)
 

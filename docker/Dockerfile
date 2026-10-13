@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgnutls28-dev openjdk-21-jdk-headless \
         libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
         libxkbcommon-dev libwayland-dev wayland-protocols \
+        mesa-vulkan-drivers vulkan-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # SDL3 is not packaged for jammy. Build the version pinned in subprojects/sdl3.wrap
