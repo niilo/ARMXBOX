@@ -19,6 +19,14 @@
 
 #include "qemu/osdep.h"
 #include "hw/xbox/mcpx/apu/dsp/dsp.h"
+#include "xemu-config.h"
+
+/*
+ * dsp_init() reads the DSP JIT preference from the UI settings. This test links
+ * no UI, so define the settings object zeroed: use_dsp_jit == false selects the
+ * C interpreter, which is the path this test exercises.
+ */
+struct config g_config;
 
 static void scratch_rw(void *opaque, uint8_t *ptr, uint32_t addr, size_t len, bool dir)
 {
@@ -63,7 +71,7 @@ static void test_dsp_basic(void)
 {
     g_autofree gchar *path = g_test_build_filename(G_TEST_DIST, "data", "basic", NULL);
 
-    DSPState *s = dsp_init(NULL, scratch_rw, fifo_rw);
+    DSPState *s = dsp_init(NULL, scratch_rw, fifo_rw, true);
 
     load_prog(s, path);
     dsp_run(s, 1000);

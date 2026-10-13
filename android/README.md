@@ -2,28 +2,31 @@
 
 This directory contains the Android frontend and native build for xemu. The
 Android entry point in `app/src/main/cpp/xemu_android.cpp` integrates the xemu
-core with SDL2 and the Android Vulkan/OpenGL rendering paths.
+core with SDL3 and the Android Vulkan/OpenGL rendering paths.
 
-## Toolchain expectations
-- Android SDK 36
-- Build Tools 36.1.0
-- NDK r30+ (configured to 30.0.15729638 in Gradle)
-- CMake 3.22.1
-- Meson
-- Ninja
-- JDK 21
-- Rust toolchain (`cargo`) for the ISO->XISO converter and DSP JIT backend
-  - On Windows, this project uses `stable-x86_64-pc-windows-gnu` (to avoid MSVC `link.exe`)
-  - Install once:
-    - `rustup toolchain install stable-x86_64-pc-windows-gnu`
-    - `rustup target add aarch64-linux-android --toolchain stable-x86_64-pc-windows-gnu`
+## Toolchain
+The supported setup is the Docker image in `../docker/`, which pins the SDK,
+NDK, CMake, JDK, Rust and the other tools. From the repository root:
 
-Rust is now required for Android builds because the DSP JIT backend is built
-from source. `-DXEMU_ENABLE_XISO_CONVERTER=OFF` only disables the ISO->XISO
-converter; it does not remove the DSP JIT Rust dependency.
+```
+docker/dev.sh bash -c 'cd android && ./gradlew assembleDebug'
+```
+
+Rust is needed even with `-DXEMU_ENABLE_XISO_CONVERTER=OFF`, because the DSP
+JIT backend is built from source. That flag only disables the ISO->XISO converter.
+
+Building on the host instead (Windows, or Linux without Docker) needs the same
+versions: Android SDK 36, Build Tools 36.1.0, NDK 30.0.15729638, CMake 3.22.1,
+Meson, Ninja, JDK 21, and Rust. On Windows, use the
+`stable-x86_64-pc-windows-gnu` toolchain (to avoid MSVC `link.exe`):
+
+```
+rustup toolchain install stable-x86_64-pc-windows-gnu
+rustup target add aarch64-linux-android --toolchain stable-x86_64-pc-windows-gnu
+```
 
 ## Build
-From this directory:
+From this directory (or through `docker/dev.sh` as above):
 
 ```
 ./gradlew assembleDebug
@@ -66,11 +69,12 @@ xemu.rustupHome=/absolute/path/to/rustup-home
 xemu.hostRustLinker=/absolute/path/to/a/host-linker
 ```
 
-## SDL2
-SDL2 is fetched via CMake (default `release-2.32.10`). To use a local checkout:
+## SDL3
+SDL3 is fetched via CMake (`SDL3_VERSION` in `app/src/main/cpp/CMakeLists.txt`,
+currently 3.4.14). To use a local checkout:
 
 ```
-./gradlew assembleDebug -Pandroid.experimental.cmake.arguments=-DSDL2_LOCAL_DIR=/path/to/SDL
+./gradlew assembleDebug -Pandroid.experimental.cmake.arguments=-DSDL3_LOCAL_DIR=/path/to/SDL
 ```
 
 ## Sega Chihiro (arcade)
