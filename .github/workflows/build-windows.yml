@@ -44,7 +44,11 @@ jobs:
     - name: Extract source package
       run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
     - name: Install SDL3 and current Vulkan headers
-      run: bash .github/scripts/install-host-deps.sh "/usr/local/mxe/usr/${CROSSPREFIX%-}" "${CROSSPREFIX}cmake"
+      run: |
+        # Older public images use /opt/mxe; this fork's images use /usr/local/mxe.
+        prefix=$("${CROSSPREFIX}pkg-config" --variable=prefix glib-2.0)
+        test -n "$prefix"
+        bash .github/scripts/install-host-deps.sh "$prefix" "${CROSSPREFIX}cmake"
     - name: Initialize compiler cache
       id: cache
       uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v4
