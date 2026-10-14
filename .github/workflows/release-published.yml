@@ -4,21 +4,28 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
   cleanup_prerelease:
     name: Delete pre-release
     if: ${{ !github.event.release.prerelease }}
+    permissions:
+      contents: write
     uses: ./.github/workflows/delete-prerelease.yml
 
   update_website:
     name: Update website
-    if: ${{ github.repository_owner == 'xemu-project' && !github.event.release.prerelease }}
+    if: ${{ vars.WEBSITE_REPOSITORY != '' && !github.event.release.prerelease }}
     uses: ./.github/workflows/update-website.yml
     secrets: inherit
 
   update_ppa_snapshot:
     name: Update PPA snapshot
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ vars.ENABLE_PPA_SNAPSHOT == 'true' && !github.event.release.prerelease }}
+    permissions:
+      contents: write
     uses: ./.github/workflows/update-ppa.yml
     with:
-      release: ${{ github.event.release.name }}
+      release: ${{ github.event.release.tag_name }}

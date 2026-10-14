@@ -49,10 +49,10 @@ RUN --mount=type=cache,id=mxe-download,target=/usr/local/mxe/pkg \
     MXE_PLUGIN_DIRS="plugins/llvm-mingw" \
     JOBS=${JOBS}
 
-RUN rm ${MXE_PATH}/src/sdl2*.patch
+RUN rm -f ${MXE_PATH}/src/sdl3*.patch
 COPY vulkan-headers.mk \
      glib.mk \
-     sdl2.mk \
+     sdl3.mk \
      libsamplerate.mk \
      libressl.mk \
      curl.mk \
@@ -73,7 +73,7 @@ RUN make \
         libressl \
         cmake \
         libslirp \
-        sdl2 \
+        sdl3 \
         vulkan-headers \
         curl
 

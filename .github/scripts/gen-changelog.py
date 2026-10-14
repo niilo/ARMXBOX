@@ -12,6 +12,7 @@ Requires the GitHub CLI (gh) to be installed and authenticated.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -20,7 +21,7 @@ from urllib.request import urlopen
 from urllib.error import URLError
 
 
-REPO_NAME = "xemu-project/xemu"
+REPO_NAME = os.environ.get("GITHUB_REPOSITORY", "")
 XEMU_TITLE_URL_BASE = "https://xemu.app/titles/"
 XDB_RAW_URL_BASE = "https://raw.githubusercontent.com/xemu-project/xdb/main/titles"
 
@@ -302,7 +303,13 @@ def generate_changelog(
 
 
 def main():
+    global REPO_NAME
     parser = argparse.ArgumentParser(description="Generate changelog for xemu releases")
+    parser.add_argument(
+        "--repo",
+        default=REPO_NAME,
+        help="GitHub owner/repository (default: environment or current checkout)",
+    )
     parser.add_argument(
         "--ref",
         default="HEAD",
@@ -319,6 +326,13 @@ def main():
     )
 
     args = parser.parse_args()
+    REPO_NAME = args.repo or subprocess.check_output(
+        ["gh", "repo", "view", "--json", "nameWithOwner",
+         "--jq", ".nameWithOwner"],
+        text=True,
+    ).strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", REPO_NAME):
+        parser.error("--repo must be owner/repository")
     changelog = generate_changelog(
         current_ref=args.ref,
         previous_tag=args.previous_tag,

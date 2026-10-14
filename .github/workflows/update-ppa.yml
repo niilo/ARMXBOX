@@ -12,16 +12,27 @@ on:
         description: "Release to use for snapshot"
         required: true
         type: string
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Published release tag to snapshot
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   push_to_ppa:
     name: Push to PPA Snapshot Branch
+    if: ${{ vars.ENABLE_PPA_SNAPSHOT == 'true' }}
     runs-on: ubuntu-latest
     steps:
     - name: Download release source
       env:
         GH_TOKEN: ${{ github.token }}
-      run: gh release download "${{ inputs.release }}" --repo="${GITHUB_REPOSITORY}" -p 'xemu-*.tar.zst'
+        RELEASE_TAG: ${{ inputs.release }}
+      run: gh release download "$RELEASE_TAG" --repo="$GITHUB_REPOSITORY" -p 'xemu-*.tar.zst'
     - name: Extract source package
       run: |
         mkdir src
@@ -35,7 +46,7 @@ jobs:
         echo -e "\
         xemu (1:$(cat XEMU_VERSION)-0) unstable; urgency=medium\n\
           Built from $(cat XEMU_VERSION)\n\
-         -- Matt Borgerson <contact@mborgerson.com>  $(date -R)" > debian/changelog
+         -- GitHub Actions <41898282+github-actions[bot]@users.noreply.github.com>  $(date -R)" > debian/changelog
         popd
     - name: Deploy source archive to branch
       uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e # v3

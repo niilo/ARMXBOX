@@ -1,9 +1,10 @@
 name: Pre-release
 
 on:
-  push:
-    branches:
-      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: ${{ github.workflow }}
@@ -12,7 +13,6 @@ concurrency:
 jobs:
   release:
     name: Pre-release
-    if: github.repository_owner == 'xemu-project'
     uses: ./.github/workflows/release.yml
     with:
       ref: ${{ github.sha }}

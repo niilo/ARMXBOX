@@ -2,16 +2,28 @@ name: Update Website
 
 on:
   workflow_call:
+    secrets:
+      WEBSITE_TOKEN:
+        description: Token allowed to dispatch workflows in WEBSITE_REPOSITORY
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   update_website:
     runs-on: ubuntu-latest
+    env:
+      WEBSITE_REPOSITORY: ${{ vars.WEBSITE_REPOSITORY }}
+      WEBSITE_REF: ${{ vars.WEBSITE_REF || 'master' }}
+      WEBSITE_WORKFLOW: ${{ vars.WEBSITE_WORKFLOW || 'build.yml' }}
+      GH_TOKEN: ${{ secrets.WEBSITE_TOKEN }}
     steps:
     - name: Trigger website update
-      if: ${{ github.repository_owner == 'xemu-project' }}
-      uses: benc-uk/workflow-dispatch@e2e5e9a103e331dad343f381a29e654aea3cf8fc # v1.2.4
-      with:
-        workflow: build.yml
-        repo: xemu-project/xemu-website
-        token: ${{ secrets.XEMU_ROBOT_TOKEN }}
-        ref: master
+      run: |
+        if [ -z "$WEBSITE_REPOSITORY" ] || [ -z "$GH_TOKEN" ]; then
+          echo '::notice::Website integration is disabled. Configure WEBSITE_REPOSITORY and WEBSITE_TOKEN to enable it.'
+          exit 0
+        fi
+        gh workflow run "$WEBSITE_WORKFLOW" --repo "$WEBSITE_REPOSITORY" --ref "$WEBSITE_REF"

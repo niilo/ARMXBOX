@@ -12,6 +12,9 @@ on:
         description: Build version
         value: ${{ jobs.source.outputs.pkg_version }}
 
+permissions:
+  contents: read
+
 jobs:
   source:
     name: Create source package
@@ -24,8 +27,11 @@ jobs:
       with:
         fetch-depth: 0
         ref: ${{ inputs.ref }}
+        persist-credentials: false
     - name: Install dependencies
-      run: sudo apt-get install meson
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y meson zstd
     - name: Determine release version
       id: version
       run: |
@@ -37,14 +43,16 @@ jobs:
         fi
     - name: Create source package
       id: package
+      env:
+        PKG_VERSION: ${{ steps.version.outputs.pkg_version }}
       run: |
-        pkg_name="xemu-${{ steps.version.outputs.pkg_version }}"
+        pkg_name="xemu-${PKG_VERSION}"
         tar_filename="${pkg_name}.tar"
         tar_prefix="./${pkg_name}/"
-        ./scripts/archive-source.sh ${tar_filename} ${tar_prefix}
+        ./scripts/archive-source.sh "${tar_filename}" "${tar_prefix}"
 
-        echo -n ${{ github.sha }} > XEMU_COMMIT
-        echo -n ${{ steps.version.outputs.pkg_version }} > XEMU_VERSION
+        git rev-parse HEAD > XEMU_COMMIT
+        printf '%s' "${PKG_VERSION}" > XEMU_VERSION
         tar -r --file "${tar_filename}" --transform "s,^./,${tar_prefix}," ./XEMU_COMMIT ./XEMU_VERSION
 
         zstd "${tar_filename}"
@@ -55,6 +63,12 @@ jobs:
         name: src
         path: ${{ steps.package.outputs.pkg_filename }}
         compression-level: 0
+
+  android:
+    name: Android
+    uses: ./.github/workflows/build-android.yml
+    with:
+      ref: ${{ inputs.ref }}
 
   linux:
     name: Linux

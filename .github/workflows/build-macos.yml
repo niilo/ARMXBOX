@@ -8,11 +8,15 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build for macOS (${{ matrix.arch }}, ${{ matrix.configuration }})
-    runs-on: macos-15
+    runs-on: ${{ matrix.arch == 'x86_64' && 'macos-15-intel' || 'macos-15' }}
     strategy:
+      fail-fast: false
       matrix:
         arch: [x86_64, arm64]
         configuration: [debug, release]
@@ -37,7 +41,9 @@ jobs:
         brew install \
           ccache \
           coreutils \
-          dylibbundler
+          dylibbundler \
+          cmake \
+          pkg-config
         pip install pyyaml requests
     - name: Initialize compiler, library cache
       id: cache
@@ -51,9 +57,16 @@ jobs:
         restore-keys: cache-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.configuration }}-
     - name: Setup ccache
       run: |
-        echo "PATH=/opt/homebrew/opt/ccache/libexec:$PATH" >> "$GITHUB_ENV"
+        echo "PATH=$(brew --prefix)/opt/ccache/libexec:$PATH" >> "$GITHUB_ENV"
         mkdir -p ${CCACHE_DIR}
         ccache -z
+    - name: Install SDL3 and current Vulkan headers
+      env:
+        BUILD_ARCH: ${{ matrix.arch }}
+        MACOSX_DEPLOYMENT_TARGET: ${{ matrix.arch == 'arm64' && '13.7.4' || '12.7.5' }}
+      run: |
+        python3 scripts/download-macos-libs.py "$BUILD_ARCH"
+        bash .github/scripts/install-host-deps.sh "$PWD/macos-libs/$BUILD_ARCH/opt/local"
     - name: Setup build options
       run: |
         if [[ "${{ matrix.configuration }}" == "debug" ]]; then

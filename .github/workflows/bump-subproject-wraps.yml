@@ -12,13 +12,17 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   bump_wraps:
     name: "Bump Meson subprojects"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@61cb8a9741eeb8a550a1b8544337180c0fc8476b # v6
@@ -44,35 +48,28 @@ jobs:
               subprojects/xxhash.wrap \
             > updated.json
 
-      - name: Create PRs for updates
+      - name: Open dependency update PR
         env:
-          GH_TOKEN: ${{ secrets.XEMU_ROBOT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          git config user.name  "xemu-robot"
-          git config user.email "robot@xemu.app"
-
-          jq -c '.[]' updated.json | while read -r item; do
-            path=$(echo "$item" | jq -r '.path')
-            file_basename=$(basename "$path")
-            name="${file_basename%%.*}"
-
-            owner=$(echo "$item" | jq -r '.owner')
-            repo=$(echo "$item" | jq -r '.repo')
-            old_rev=$(echo "$item" | jq -r '.old_rev')
-            new_rev=$(echo "$item" | jq -r '.new_rev')
-            new_tag=$(echo "$item" | jq -r '.new_tag')
-
-            echo "➤ Processing $name"
-            branch="sync/bump-${name//\//-}-${GITHUB_RUN_ID}"
-
-            git switch --quiet -c "$branch" origin/master
-            git add "$path"
-            git commit -m "meson: Bump ${name} to ${new_tag}"
-            git push -u origin "$branch"
-
-            gh pr create \
-              --title "meson: Bump ${name} to ${new_tag}" \
-              --body  "Automatic bump of \`${name}\` to [${new_tag}](https://github.com/${owner}/${repo}/compare/${old_rev}..${new_rev})." \
-              --base  master
-          done
+          if [ "$(jq length updated.json)" -eq 0 ]; then
+            echo 'No dependency updates found.'
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
+          branch="sync/bump-subprojects-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git switch -c "$branch"
+          while IFS= read -r path; do
+            git add -- "$path"
+          done < <(jq -r '.[].path' updated.json)
+          git commit -m "meson: Bump subproject dependencies"
+          git push -u origin "$branch"
+          jq -r '.[] | "- \(.path): \(.old_rev) → \(.new_rev) (\(.new_tag))"' updated.json > pr-body.md
+          gh pr create --repo "$GITHUB_REPOSITORY" --head "$branch" --base "$BASE_BRANCH" \
+            --title "meson: Bump subproject dependencies" --body-file pr-body.md
+          # GITHUB_TOKEN-created PRs do not trigger pull_request workflows.
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
