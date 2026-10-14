@@ -31,6 +31,15 @@
 #include <sys/system_properties.h>
 #endif
 
+static inline void render_thread_yield(void)
+{
+#ifdef _WIN32
+    SwitchToThread();
+#else
+    sched_yield();
+#endif
+}
+
 #define VK_PIPELINE_CACHE_MAX_DISK_SIZE (256 * 1024 * 1024)
 
 static bool g_xemu_fast_fences = false;
@@ -2736,7 +2745,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
                  * Faster than QemuEvent (no futex/eventfd syscall overhead).
                  * Typically completes in <100μs. */
                 while (!qatomic_read(&r->frame_submitted[deferred_frame])) {
-                    sched_yield();
+                    render_thread_yield();
                 }
             }
 
@@ -2806,7 +2815,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
             if (r->frame_enqueued[next_frame] &&
                 !qatomic_read(&r->frame_submitted[next_frame])) {
                 while (!qatomic_read(&r->frame_submitted[next_frame])) {
-                    sched_yield();
+                    render_thread_yield();
                 }
             }
             r->frame_enqueued[next_frame] = false;

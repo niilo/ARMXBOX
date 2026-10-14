@@ -81,9 +81,17 @@ jobs:
           #        failure and have llvm toolchain generate PDB directly.
           opts=()
         fi
+        if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+          # cv2pdb 0.52 only understands x86 PE files; emit ARM64 CodeView/PDB
+          # directly with Clang and LLD instead.
+          opts+=(--extra-cflags=-gcodeview --extra-ldflags=-Wl,--pdb=xemu.pdb)
+        fi
         echo "XEMU_BUILD_OPTIONS=${opts[*]}" >> "$GITHUB_ENV"
     - name: Compile
       run: ./build.sh -p win64-cross ${XEMU_BUILD_OPTIONS}
+    - name: Collect native ARM64 symbols
+      if: ${{ matrix.arch == 'arm64' }}
+      run: cp build/xemu.pdb dist/xemu.pdb
     - name: Report ccache stats
       run: ccache -s
     - name: Upload build artifact
@@ -92,9 +100,7 @@ jobs:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
 
-  # Generate a symbols package for Windows. Use cv2pdb to generate PDBs from
-  # DWARF and update + strip the executable. Re-package the original release
-  # and create symbols package.
+  # GCC/x86 uses cv2pdb; LLVM/ARM64 already supplies a native PDB.
   generate_pdb:
     name: Generate PDB for Windows (${{ matrix.arch }}, ${{ matrix.configuration }})
     runs-on: windows-latest
@@ -110,6 +116,7 @@ jobs:
         name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
     - name: Generate PDB
+      if: ${{ matrix.arch == 'x86_64' }}
       run: |
         Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
         7z x -ocv2pdb -y cv2pdb.zip

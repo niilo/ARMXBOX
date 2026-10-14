@@ -20,9 +20,9 @@
 #include "ui/xemu-settings.h"
 #include "renderer.h"
 #include "qemu/error-report.h"
-#include <EGL/egl.h>
 #include <math.h>
 #ifdef __ANDROID__
+#include <EGL/egl.h>
 #include <android/log.h>
 #define DBG_LOG(...) __android_log_print(ANDROID_LOG_INFO, "hakuX-vk-dbg", __VA_ARGS__)
 #else
