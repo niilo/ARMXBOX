@@ -5,12 +5,63 @@ Android entry point in `app/src/main/cpp/xemu_android.cpp` integrates the xemu
 core with SDL3 and the Android Vulkan/OpenGL rendering paths.
 
 ## Toolchain
-The supported setup is the Docker image in `../docker/`, which pins the SDK,
-NDK, CMake, JDK, Rust and the other tools. From the repository root:
+Android builds support both the Linux Docker image in `../docker/` and a
+native macOS toolchain. They share source code and Android dependency versions,
+with separate native build directories and SDK settings.
+
+### Linux / Docker
+
+The Docker image pins the SDK, NDK, CMake, JDK, Rust and the other tools.
+The existing command works on Linux and macOS, from the repository root:
 
 ```
 docker/dev.sh bash -c 'cd android && ./gradlew assembleDebug'
 ```
+
+On Apple Silicon, the helper selects `linux/amd64` because the Linux Android
+host tools are x86-64. With Colima, enable Rosetta and allocate enough resources
+before the first build (this restarts the VM):
+
+```
+colima stop
+colima start --cpus 8 --memory 16 --vm-type vz --vz-rosetta
+```
+
+`XEMU_DEV_PLATFORM` overrides the container platform. Linux keeps its existing
+default. Docker overlays `docker/android-local.properties` inside the container,
+so Mac SDK/tool paths in your ignored `android/local.properties` stay on the
+host. Mac Docker builds disable Gradle file watching to avoid errors under CPU
+translation. Docker outputs remain in `android/app/build/` and `android/app/.cxx/`.
+The `--gpu` option still requires a Linux host with `/dev/dri`.
+
+### Native macOS
+
+Install Homebrew and Xcode Command Line Tools (`xcode-select --install`), then
+run these commands from the repository root:
+
+```
+macos/setup.sh                   # install JDK 21, Meson, Ninja, Rust and SDK tools
+macos/dev.sh --check             # check the installed native toolchain
+macos/dev.sh assembleDebug       # build the Android APK without Docker
+macos/dev.sh assembleProfile     # build a profileable APK
+```
+
+Setup installs Android SDK 36, Build Tools 36.1.0, NDK 30.0.15729638 and CMake
+3.22.1, matching Docker. The default SDK location is `~/Library/Android/sdk`;
+an existing `sdk.dir` in `android/local.properties` takes precedence, otherwise
+`ANDROID_HOME` or `ANDROID_SDK_ROOT` can select another location. Setup adds
+missing SDK, Cargo and Meson paths to `local.properties`, preserving overrides.
+
+Native Mac outputs go to `android/app/build-macos/`, CMake state to
+`android/app/.cxx-macos/`, and the helper's Gradle project cache to
+`android/.gradle-macos/`. Linux/Docker and Mac builds can therefore use the same
+checkout without cleaning the other environment's outputs.
+
+For Android Studio, open `android/` and select the JDK at
+`$(brew --prefix openjdk@21)/libexec/openjdk.jdk/Contents/Home` as the Gradle JDK.
+Use a physical arm64 Android device for GPU testing and profiling.
+
+### Other host setups
 
 Rust is needed even with `-DXEMU_ENABLE_XISO_CONVERTER=OFF`, because the DSP
 JIT backend is built from source. That flag only disables the ISO->XISO converter.
@@ -41,6 +92,9 @@ adb push app/build/intermediates/cxx/RelWithDebInfo/<build-id>/obj/arm64-v8a/tes
 adb shell /data/local/tmp/test-coroutine-android
 ```
 
+For native macOS builds, replace `app/.cxx/` with `app/.cxx-macos/` and
+`app/build/` with `app/build-macos/` in these paths.
+
 This checks 1,000 coroutine transfers between threads, nested entry, stack and
 floating-point state, and termination. On hardware with pointer authentication,
 the threads use separate IA keys as Android app threads do. The test is excluded
@@ -57,6 +111,7 @@ The resulting APK is written to
 `app/build/outputs/apk/profile/app-profile.apk`. Open it with Android Studio's
 **Profile or Debug APK** action. A connected arm64 Android device is required
 to record CPU, memory, power, or system traces.
+Native macOS APKs use `app/build-macos/outputs/apk/` instead.
 
 Host tools installed outside the normal `PATH` can be supplied in the ignored
 `local.properties` file:

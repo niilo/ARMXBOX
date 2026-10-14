@@ -142,6 +142,9 @@ android {
     cmake {
       path = file("src/main/cpp/CMakeLists.txt")
       version = "3.22.1"
+      if (System.getProperty("os.name").startsWith("Mac")) {
+        buildStagingDirectory = file(".cxx-macos")
+      }
     }
   }
 

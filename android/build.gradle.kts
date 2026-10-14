@@ -7,3 +7,10 @@ plugins {
    */
   id("com.android.application") version "9.2.1" apply false
 }
+
+// Keep native macOS outputs separate from builds made in the Linux container.
+allprojects {
+  if (System.getProperty("os.name").startsWith("Mac")) {
+    layout.buildDirectory.set(layout.projectDirectory.dir("build-macos"))
+  }
+}

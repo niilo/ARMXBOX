@@ -1,6 +1,8 @@
 # Android/Gradle
 .gradle/
+.gradle-macos/
 build/
+build-macos/
 local.properties
 *.iml
 /.idea/
@@ -8,6 +10,7 @@ local.properties
 # Android app outputs
 app/build/
 app/.cxx/
+app/.cxx-macos/
 
 # OS
 .DS_Store
