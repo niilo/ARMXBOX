@@ -96,7 +96,9 @@ class Lib:
         if current_platform == windows and self.pkg_win:
             self._version = (
                 subprocess.run(
-                    r"grep -e '_VERSION\s*:=' /opt/mxe/src/"
+                    r"grep -e '_VERSION\s*:=' "
+                    + os.environ.get("MXE_PATH", "/usr/local/mxe")
+                    + "/src/"
                     + self.pkg_win
                     + ".mk | cut -d'=' -f2",
                     capture_output=True,
@@ -165,7 +167,8 @@ class PkgConfig:
     def modversion(self):
         pkg_config = {
             linux: "pkg-config",
-            windows: "x86_64-w64-mingw32.static-pkg-config",
+            windows: os.environ.get("CROSSPREFIX", "x86_64-w64-mingw32.static-")
+            + "pkg-config",
             macos: "pkg-config",
         }[current_platform]
         ver = subprocess.run(
@@ -368,16 +371,15 @@ LIBS = [
     # Libraries either linked statically, dynamically linked & shipped, or dynamically linked with system-installed libraries only
     #
     Lib(
-        "sdl2",
+        "sdl3",
         "https://www.libsdl.org/",
         zlib,
-        "https://raw.githubusercontent.com/libsdl-org/SDL/main/LICENSE.txt",
-        ships_static={windows},
+        "https://raw.githubusercontent.com/libsdl-org/SDL/release-3.4.10/LICENSE.txt",
+        ships_static={windows, linux},
         ships_dynamic={macos},
-        pkgconfig=PkgConfig("sdl2"),
-        pkg_win="sdl2",
-        pkg_mac="sdl2",
-        pkg_ubuntu="libsdl2-dev",
+        pkgconfig=PkgConfig("sdl3"),
+        pkg_win="sdl3",
+        pkg_mac="sdl3",
     ),
     Lib(
         "glib-2.0",
@@ -533,6 +535,10 @@ LIBS = [
 
 
 def gen_license():
+    repository = os.environ.get("GITHUB_REPOSITORY")
+    source_url = (
+        f"https://github.com/{repository}" if repository else "https://xemu.app"
+    )
     print(
         f"""\
 xemu is free and open source software. This binary of xemu has been made
@@ -540,7 +546,7 @@ available to you under the terms of the GNU General Public License, version 2.
 
 The source code used to build this version of xemu is available at:
 
-                                https://xemu.app
+                                {source_url}
 
 -------------------------------------------------------------------------------
 

@@ -13,6 +13,8 @@ Run `Build for Android` manually to choose `Debug` or `Profile`. Both use
 development signing; production signing keys and Play Store publishing are
 not required. APKs are available under the run's **Artifacts** section.
 The Android toolchain matches `android/README.md`.
+Linux packages link the pinned SDL3 statically because Ubuntu 22.04 does not
+provide an SDL3 runtime package; macOS bundles it in the app.
 
 ## Releases and images
 
@@ -46,10 +48,16 @@ upstream project, its website, or its container registry by default.
 
 Keep the repository's default workflow permission at **read**. Individual
 release, package, and maintenance jobs request the write permissions they use.
-Allow GitHub Actions to create pull requests in repository Actions settings
-for the weekly Meson dependency updater. It uses `GITHUB_TOKEN`, creates one
-PR per update batch, and explicitly dispatches CI because token-created PRs
-do not trigger `pull_request` runs. It does not approve or merge PRs.
+The weekly Meson dependency updater uploads `subproject-updates.patch` and
+`updated.json` as an artifact by default. Review and apply the patch with
+`git apply subproject-updates.patch`.
+
+To enable automatic update PRs, first allow GitHub Actions to create and
+approve pull requests in repository Actions settings (GitHub combines these
+capabilities), then set `ENABLE_DEPENDENCY_PRS=true`. The updater uses
+`GITHUB_TOKEN`, creates one PR per batch, and explicitly dispatches CI because
+token-created PRs do not trigger `pull_request` runs. It does not approve or
+merge PRs.
 
 Action revisions are pinned. Validate workflow edits with `actionlint` and
 `git diff --check`; test build changes with the relevant local commands in

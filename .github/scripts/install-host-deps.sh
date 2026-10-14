@@ -44,7 +44,7 @@ download "$vulkan_url/${vulkan_version}.tar.gz" \
 
 shared=ON
 static=OFF
-if [[ "$cmake_cmd" == *mingw* ]]; then
+if [[ "$cmake_cmd" == *mingw* ]] || [ "${XEMU_SDL_STATIC:-OFF}" = ON ]; then
     shared=OFF
     static=ON
 fi

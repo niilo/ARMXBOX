@@ -852,6 +852,7 @@ void sdl2_poll_events(struct sdl2_console *scon)
 
         switch (ev->type) {
         case SDL_EVENT_KEY_DOWN:
+#ifdef CONFIG_VULKAN
             /* Frame capture was only reachable through the Android JNI
              * binding, leaving the desktop build with no way to trigger it.
              * F9 is the only free function key here: F1/F2 open menus, F5-F8
@@ -861,6 +862,7 @@ void sdl2_poll_events(struct sdl2_console *scon)
                 nv2a_dbg_trigger_diag_frame();
                 break;
             }
+#endif
             if (kbd) break;
             handle_keydown(ev);
             break;

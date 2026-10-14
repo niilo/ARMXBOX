@@ -1665,6 +1665,7 @@ endif
 sdl = not_found
 if not get_option('sdl').auto() or have_system
   sdl = dependency('sdl3', required: get_option('sdl'),
+                   static: get_option('sdl_static') or get_option('prefer_static'),
                    fallback: ['sdl3', 'sdl3_dep'])
   sdl_image = not_found
 endif

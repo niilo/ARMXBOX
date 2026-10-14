@@ -10,14 +10,14 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
 
 jobs:
   bump_wraps:
     name: "Bump Meson subprojects"
     runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.patch.outputs.count }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
@@ -48,24 +48,49 @@ jobs:
               subprojects/xxhash.wrap \
             > updated.json
 
+      - name: Prepare update patch
+        id: patch
+        run: |
+          git diff --binary -- subprojects > subproject-updates.patch
+          echo "count=$(jq length updated.json)" >> "$GITHUB_OUTPUT"
+      - name: Upload proposed updates
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: subproject-updates
+          path: |
+            updated.json
+            subproject-updates.patch
+          retention-days: 14
+
+  open_pr:
+    name: Open dependency update PR
+    needs: bump_wraps
+    if: ${{ vars.ENABLE_DEPENDENCY_PRS == 'true' && needs.bump_wraps.outputs.count != '0' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: subproject-updates
       - name: Open dependency update PR
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          if [ "$(jq length updated.json)" -eq 0 ]; then
-            echo 'No dependency updates found.'
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           gh auth setup-git
           branch="sync/bump-subprojects-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git switch -c "$branch"
-          while IFS= read -r path; do
-            git add -- "$path"
-          done < <(jq -r '.[].path' updated.json)
+          git apply --index subproject-updates.patch
           git commit -m "meson: Bump subproject dependencies"
           git push -u origin "$branch"
           jq -r '.[] | "- \(.path): \(.old_rev) → \(.new_rev) (\(.new_tag))"' updated.json > pr-body.md

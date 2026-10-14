@@ -1780,6 +1780,7 @@ static void surface_copy_shrink_row(uint8_t *out, const uint8_t *in,
         return;
     }
 
+#ifdef __ANDROID__
 #ifdef __aarch64__
     if (bytes_per_pixel == 4 &&
         android_neon_surface_copy_shrink_row_4bpp(out, in, width, factor)) {
@@ -1789,6 +1790,7 @@ static void surface_copy_shrink_row(uint8_t *out, const uint8_t *in,
         android_neon_surface_copy_shrink_row_2bpp(out, in, width, factor)) {
         return;
     }
+#endif
 #endif
 
     if (bytes_per_pixel == 4) {
