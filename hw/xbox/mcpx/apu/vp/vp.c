@@ -1573,6 +1573,7 @@ static void voice_process(MCPXAPUState *d,
 
     // FIXME: ParaEQ
 
+    float attenuation[8];
     for (int b = 0; b < 8; b++) {
         float g = ea_value;
         float hr;
@@ -1582,7 +1583,8 @@ static void voice_process(MCPXAPUState *d,
         } else {
             hr = 1 << d->vp.submix_headroom[bin[b]];
         }
-        g *= attenuate(vol[b])/hr;
+        attenuation[b] = attenuate(vol[b]);
+        g *= attenuation[b] / hr;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
             mixbins[bin[b]][i] += g*samples[i][b % channels];
         }
@@ -1619,7 +1621,7 @@ static void voice_process(MCPXAPUState *d,
                 continue;
             }
             float hr = 1 << d->vp.submix_headroom[bin[b]];
-            g = fmax(g, attenuate(vol[b]) / hr);
+            g = fmax(g, attenuation[b] / hr);
         }
         g *= ea_value;
         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
