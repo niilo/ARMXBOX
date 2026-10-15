@@ -28,9 +28,20 @@ option(XEMU_ENABLE_PERF_LOG "Compile in nv2a performance telemetry" ON)
 # NDEBUG in case a toolchain default ever introduces it; as configured today the
 # Android toolchain never defines it at all.
 set(XEMU_ASSERT_FLAG $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:-UNDEBUG>)
-option(XEMU_OPT_NATIVE_FLOAT "Enable native ARM64 float operations for SSE/FPU" OFF)
-option(XEMU_OPT_TCG_PEEPHOLE "Enable TCG optimizer setcond+brcond peephole fusion" OFF)
-option(XEMU_OPT_TB_CACHE_HINTS "Enable persistent TB cache hints (pre-warm on load)" OFF)
+# These paths historically defaulted to 1 in C/C++ even when the CMake options
+# were OFF, because only ON emitted a definition. Preserve that effective
+# default, but always pass 0/1 so OFF now reliably selects the reference path.
+# Existing build caches that contain OFF must opt back in explicitly to retain
+# the historical behavior.
+option(XEMU_OPT_NATIVE_FLOAT "Enable native ARM64 float operations for SSE/FPU" ON)
+option(XEMU_OPT_TCG_PEEPHOLE "Enable TCG optimizer setcond+brcond peephole fusion" ON)
+option(XEMU_OPT_TB_CACHE_HINTS "Enable persistent TB cache hints (pre-warm on load)" ON)
+set(XEMU_OPT_DEFINITIONS
+  XEMU_OPT_NATIVE_FLOAT=$<BOOL:${XEMU_OPT_NATIVE_FLOAT}>
+  XEMU_OPT_TCG_PEEPHOLE=$<BOOL:${XEMU_OPT_TCG_PEEPHOLE}>
+  XEMU_OPT_TB_CACHE_HINTS=$<BOOL:${XEMU_OPT_TB_CACHE_HINTS}>
+)
+message(STATUS "Native optimization switches: float=${XEMU_OPT_NATIVE_FLOAT}, peephole=${XEMU_OPT_TCG_PEEPHOLE}, TB hints=${XEMU_OPT_TB_CACHE_HINTS}")
 
 if(XEMU_ENABLE_LTO)
   # CMake 3.22's Android IPO probe requests GNU gold, which modern NDKs no
@@ -1145,9 +1156,7 @@ target_compile_definitions(xemu_core PRIVATE
   $<$<BOOL:${XEMU_ENABLE_VULKAN}>:VMA_STATIC_VULKAN_FUNCTIONS=0>
   $<$<BOOL:${XEMU_ENABLE_VULKAN}>:VMA_DYNAMIC_VULKAN_FUNCTIONS=0>
   CONFIG_RENDERDOC
-  $<$<BOOL:${XEMU_OPT_NATIVE_FLOAT}>:XEMU_OPT_NATIVE_FLOAT=1>
-  $<$<BOOL:${XEMU_OPT_TCG_PEEPHOLE}>:XEMU_OPT_TCG_PEEPHOLE=1>
-  $<$<BOOL:${XEMU_OPT_TB_CACHE_HINTS}>:XEMU_OPT_TB_CACHE_HINTS=1>
+  ${XEMU_OPT_DEFINITIONS}
   CONFIG_ATOMIC64
   CONFIG_PPOLL
   CONFIG_PRCTL_PR_SET_TIMERSLACK
@@ -1287,9 +1296,7 @@ add_library(xemu SHARED
 
 target_compile_definitions(xemu PRIVATE ANDROID __ANDROID__ XBOX CONFIG_SDL CONFIG_OPENGL
   CONFIG_RENDERDOC
-  $<$<BOOL:${XEMU_OPT_NATIVE_FLOAT}>:XEMU_OPT_NATIVE_FLOAT=1>
-  $<$<BOOL:${XEMU_OPT_TCG_PEEPHOLE}>:XEMU_OPT_TCG_PEEPHOLE=1>
-  $<$<BOOL:${XEMU_OPT_TB_CACHE_HINTS}>:XEMU_OPT_TB_CACHE_HINTS=1>
+  ${XEMU_OPT_DEFINITIONS}
 )
 if(XEMU_ENABLE_VULKAN)
   target_compile_definitions(xemu PRIVATE CONFIG_VULKAN VK_NO_PROTOTYPES)

@@ -2808,6 +2808,9 @@ class SettingsActivity : AppCompatActivity() {
 
   private fun isPersistentCacheEntry(name: String): Boolean {
     return name == "shaders" ||
+      name == "spv_cache" ||
+      name == "vk_pipeline_cache.bin" ||
+      name == "shader_module_keys.bin" ||
       name == "tb_cache.bin" ||
       name == "shader_cache_list" ||
       name.startsWith("scache-") ||

@@ -280,8 +280,8 @@ typedef struct FrameStagingState {
     StorageBuffer vertex_ram;
     VkDeviceSize vertex_ram_flush_min;
     VkDeviceSize vertex_ram_flush_max;
-    VkDeviceSize vertex_ram_propagate_min;
-    VkDeviceSize vertex_ram_propagate_max;
+    /* Pages changed in another mirror since this slot last caught up. */
+    unsigned long *vertex_ram_stale;
     bool vertex_ram_initialized;
     unsigned long *uploaded_bitmap;
 } FrameStagingState;
@@ -749,6 +749,9 @@ typedef struct TextureBinding {
 #if OPT_BINDLESS_TEXTURES
     uint32_t bindless_slot;
     uint32_t bindless_binding;
+    /* Identity and read reservations for the shared descriptor slot. */
+    VkDescriptorImageInfo bindless_image_info;
+    bool bindless_descriptor_used;
 #endif
 } TextureBinding;
 
@@ -1233,9 +1236,11 @@ typedef struct PGRAPHVkState {
 
     MemorySyncRequirement vertex_ram_buffer_syncs[NV2A_VERTEXSHADER_ATTRIBUTES];
     size_t num_vertex_ram_buffer_syncs;
-    /* Guest pages copied into the vertex RAM buffer since the current command
-     * buffer started recording. Draws already recorded read from those pages,
-     * so overwriting one before submission would retroactively change them. */
+    /*
+     * Guest pages read by recorded/queued draws, plus conservative upload
+     * reservations. Clean vertex bindings also register their reads, since
+     * overwriting one before submission would retroactively change a draw.
+     */
     unsigned long *cb_vertex_pages;
     size_t bitmap_size;
 
@@ -1265,6 +1270,8 @@ typedef struct PGRAPHVkState {
     uint32_t cached_uniform_attrs;
     uint32_t cached_swizzle_attrs;
     uint32_t cached_int16_attrs;
+    uint16_t immediate_attrs_valid;
+    float immediate_attr_values[NV2A_VERTEXSHADER_ATTRIBUTES][4];
     /* Whether R16*_SSCALED can be fetched from vertex buffers; see
      * pgraph_vk_init_vertex_formats(). */
     bool sscaled_vertex_supported;
@@ -1417,6 +1424,8 @@ typedef struct PGRAPHVkState {
     float gpu_ts_period_ns;
     int gpu_ts_rp_index;
     int gpu_ts_rp_counts[NUM_SUBMIT_FRAMES];
+    /* Query accounting is independent of submitted-slot resource ownership. */
+    bool gpu_ts_pending[NUM_SUBMIT_FRAMES];
     uint64_t gpu_ts_results[GPU_TS_QUERIES_PER_CB];
     bool new_query_needed;
     bool query_in_flight;
@@ -1577,6 +1586,12 @@ void pgraph_vk_transition_image_layout(PGRAPHState *pg, VkCommandBuffer cmd,
                                        VkImageLayout newLayout);
 
 // vertex.c
+bool pgraph_vk_init_vertex_ram_state(PGRAPHVkState *r, FrameStagingState *fs,
+                                    Error **errp);
+void pgraph_vk_finalize_vertex_ram_state(FrameStagingState *fs);
+void pgraph_vk_vertex_ram_written(PGRAPHVkState *r, hwaddr offset,
+                                  VkDeviceSize size);
+void pgraph_vk_propagate_vertex_ram(PGRAPHVkState *r, int next_frame);
 void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
                                       unsigned int max_element,
                                       bool inline_data,
@@ -1653,6 +1668,8 @@ void pgraph_vk_gl_make_context_current(void);
 void pgraph_vk_init_textures(PGRAPHState *pg);
 void pgraph_vk_finalize_textures(PGRAPHState *pg);
 void pgraph_vk_bind_textures(NV2AState *d);
+void pgraph_vk_invalidate_surface_bindless_view(PGRAPHVkState *r,
+                                                VkImageView view);
 bool pgraph_vk_check_textures_fast_skip(PGRAPHState *pg);
 void pgraph_vk_mark_textures_possibly_dirty(NV2AState *d, hwaddr addr,
                                             hwaddr size);

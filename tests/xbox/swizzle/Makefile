@@ -1,24 +1,39 @@
-CC=clang
-CC=gcc
-CFLAGS=-O2 -Wall -g
+CC ?= cc
+.DEFAULT_GOAL := swizzle-test
+CFLAGS ?= -O2 -Wall -g
+SWIZZLE_SOURCE ?= ../../../hw/xbox/nv2a/pgraph/swizzle.c
 
-swizzle-test: swizzle-test.o swizzle-a.o
-	$(CC) -o $@ $^
+OBJECTS = swizzle-test.o swizzle-a.o
+
+# Optional original source for interleaved before/after measurements.
+ifneq ($(BASELINE_SOURCE),)
+OBJECTS += swizzle-b.o
+swizzle-test.o: CPPFLAGS += -DSWIZZLE_COMPARE_BASELINE
+swizzle-b.o: $(BASELINE_SOURCE)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Dswizzle_box=swizzle_box_B \
+		-Dunswizzle_box=unswizzle_box_B \
+		-Dswizzle_box_internal=swizzle_box_B_internal \
+		-Dunswizzle_box_internal=unswizzle_box_B_internal -c $< -o $@
+endif
+
+swizzle-test: $(OBJECTS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 swizzle-test.o: swizzle-test.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
-swizzle-a.o: swizzle.o
-	objcopy \
-		--redefine-sym swizzle_box=swizzle_box_A \
-		--redefine-sym unswizzle_box=unswizzle_box_A \
-		$< $@
+swizzle-a.o: $(SWIZZLE_SOURCE)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -Dswizzle_box=swizzle_box_A \
+		-Dunswizzle_box=unswizzle_box_A \
+		-Dswizzle_box_internal=swizzle_box_A_internal \
+		-Dunswizzle_box_internal=unswizzle_box_A_internal -c $< -o $@
 
-swizzle.o: ../../../hw/xbox/nv2a/pgraph/swizzle.c
-	$(CC) -o $@ $(CFLAGS) -c $<
+.PHONY: check bench clean
+check: swizzle-test
+	./swizzle-test --check
 
-%.o: %.c
-	$(CC) -o $@ $(CFLAGS) -c $<
+bench: swizzle-test
+	./swizzle-test --bench
 
-.PHONY: clean
 clean:
-	rm -f swizzle-test swizzle.o swizzle-a.o
+	rm -f swizzle-test swizzle-test.o swizzle.o swizzle-a.o swizzle-b.o

@@ -1967,6 +1967,7 @@ static void destroy_surface_image(PGRAPHVkState *r, SurfaceBinding *surface)
      * per Forza race before retirement was deferred.
      */
     pgraph_vk_invalidate_desc_set_cache(r);
+    pgraph_vk_invalidate_surface_bindless_view(r, surface->image_view);
     vkDestroyImageView(r->device, surface->image_view, NULL);
     surface->image_view = VK_NULL_HANDLE;
 

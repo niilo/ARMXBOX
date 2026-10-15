@@ -212,18 +212,7 @@ static void process_vertex_ram_update(PGRAPHVkState *r, RenderCommand *cmd)
     StorageBuffer *vram = get_staging_buffer(r, BUFFER_VERTEX_RAM);
     memcpy(vram->mapped + offset, data, size);
 
-    FrameStagingState *fs = &r->frame_staging[r->current_frame];
-    if (offset < fs->vertex_ram_flush_min) {
-        fs->vertex_ram_flush_min = offset;
-    }
-    VkDeviceSize end = offset + size;
-    if (end > fs->vertex_ram_flush_max) {
-        fs->vertex_ram_flush_max = end;
-    }
-
-    size_t start_bit = offset / TARGET_PAGE_SIZE;
-    size_t end_bit = TARGET_PAGE_ALIGN(offset + size) / TARGET_PAGE_SIZE;
-    bitmap_set(get_uploaded_bitmap(r), start_bit, end_bit - start_bit);
+    pgraph_vk_vertex_ram_written(r, offset, size);
 
     g_free(data);
 }

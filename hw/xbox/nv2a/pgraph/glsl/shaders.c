@@ -85,6 +85,14 @@ ShaderState pgraph_glsl_get_shader_state(PGRAPHState *pg)
     return state;
 }
 
+bool pgraph_glsl_vertex_attrs_match(PGRAPHState *pg, const VshState *state)
+{
+    return pg->uniform_attrs == state->uniform_attrs &&
+           pg->swizzle_attrs == state->swizzle_attrs &&
+           pg->int16_attrs == state->int16_attrs &&
+           pg->compressed_attrs == state->compressed_attrs;
+}
+
 bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
                                           const ShaderState *state)
 {
@@ -118,11 +126,8 @@ bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
         }
     }
 
-    if (pg->uniform_attrs != state->vsh.uniform_attrs ||
-        pg->swizzle_attrs != state->vsh.swizzle_attrs ||
-        pg->int16_attrs != state->vsh.int16_attrs ||
-        pg->compressed_attrs != state->vsh.compressed_attrs ||
-        pg->primitive_mode != state->geom.primitive_mode ||
+    if (!pgraph_glsl_vertex_attrs_match(pg, &state->vsh) ||
+        !pgraph_glsl_primitive_mode_matches(pg, &state->geom) ||
         pg->surface_scale_factor != state->vsh.surface_scale_factor ||
         pg->surface_shape.zeta_format != state->psh.surface_zeta_format) {
         return true;

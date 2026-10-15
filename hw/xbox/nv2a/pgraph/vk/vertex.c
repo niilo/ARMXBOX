@@ -42,6 +42,153 @@ VkDeviceSize pgraph_vk_update_vertex_inline_buffer(PGRAPHState *pg, void **data,
                                       sizes, count, 1);
 }
 
+bool pgraph_vk_init_vertex_ram_state(PGRAPHVkState *r, FrameStagingState *fs,
+                                    Error **errp)
+{
+    assert(!fs->uploaded_bitmap && !fs->vertex_ram_stale);
+    fs->vertex_ram_flush_min = VK_WHOLE_SIZE;
+    fs->vertex_ram_flush_max = 0;
+    fs->vertex_ram_initialized = false;
+    fs->uploaded_bitmap = bitmap_new(r->bitmap_size);
+    fs->vertex_ram_stale = bitmap_new(r->bitmap_size);
+    if (!fs->uploaded_bitmap || !fs->vertex_ram_stale) {
+        error_setg(errp, "Failed to allocate per-frame vertex RAM bitmaps");
+        pgraph_vk_finalize_vertex_ram_state(fs);
+        return false;
+    }
+    return true;
+}
+
+void pgraph_vk_finalize_vertex_ram_state(FrameStagingState *fs)
+{
+    g_free(fs->uploaded_bitmap);
+    fs->uploaded_bitmap = NULL;
+    g_free(fs->vertex_ram_stale);
+    fs->vertex_ram_stale = NULL;
+    fs->vertex_ram_initialized = false;
+    fs->vertex_ram_flush_min = VK_WHOLE_SIZE;
+    fs->vertex_ram_flush_max = 0;
+}
+
+/*
+ * Called after either CPU writer updates the current, authoritative mirror.
+ * Each other destination retains its own debt across multiple rotations.
+ */
+void pgraph_vk_vertex_ram_written(PGRAPHVkState *r, hwaddr offset,
+                                  VkDeviceSize size)
+{
+    FrameStagingState *fs = &r->frame_staging[r->current_frame];
+    size_t total = fs->vertex_ram.buffer_size;
+
+    assert(offset <= total && size <= total - offset);
+    if (!size) {
+        return;
+    }
+    size_t start_bit = offset / TARGET_PAGE_SIZE;
+    size_t end_bit = DIV_ROUND_UP(offset + size, TARGET_PAGE_SIZE);
+    assert(end_bit <= r->bitmap_size);
+    fs->vertex_ram_flush_min = MIN(fs->vertex_ram_flush_min, offset);
+    fs->vertex_ram_flush_max = MAX(fs->vertex_ram_flush_max, offset + size);
+    bitmap_set(fs->uploaded_bitmap, start_bit, end_bit - start_bit);
+    for (int i = 0; i < r->num_active_frames; i++) {
+        if (i != r->current_frame) {
+            bitmap_set(r->frame_staging[i].vertex_ram_stale,
+                       start_bit, end_bit - start_bit);
+        }
+    }
+}
+
+/*
+ * The caller has completed the existing destination-slot fence wait. No
+ * synchronization is weakened here: only the host memcpy selection changes.
+ */
+void pgraph_vk_propagate_vertex_ram(PGRAPHVkState *r, int next_frame)
+{
+    assert(next_frame >= 0 && next_frame < r->num_active_frames);
+    FrameStagingState *cur = &r->frame_staging[r->current_frame];
+    FrameStagingState *next = &r->frame_staging[next_frame];
+
+#if NV2A_PERF_LOG
+    g_nv2a_stats.vram_working.rotations++;
+#endif
+    if (next_frame == r->current_frame) {
+        return;
+    }
+    size_t total = cur->vertex_ram.buffer_size;
+    assert(total == next->vertex_ram.buffer_size);
+    assert(r->bitmap_size == DIV_ROUND_UP(total, TARGET_PAGE_SIZE));
+    memcpy(next->uploaded_bitmap, cur->uploaded_bitmap,
+           BITS_TO_LONGS(r->bitmap_size) * sizeof(unsigned long));
+    next->vertex_ram_flush_min = VK_WHOLE_SIZE;
+    next->vertex_ram_flush_max = 0;
+    if (!next->vertex_ram_initialized) {
+#if NV2A_PERF_LOG
+        int64_t first_copy_start = nv2a_clock_ns();
+#endif
+        memcpy(next->vertex_ram.mapped, cur->vertex_ram.mapped, total);
+#if NV2A_PERF_LOG
+        int64_t first_copy_ns = nv2a_clock_ns() - first_copy_start;
+        g_nv2a_stats.vram_working.first_copy_ns += MAX(first_copy_ns, 0);
+        g_nv2a_stats.vram_working.first_copy_runs++;
+        g_nv2a_stats.vram_working.first_copy_bytes += total;
+#endif
+        next->vertex_ram_flush_min = 0;
+        next->vertex_ram_flush_max = total;
+        next->vertex_ram_initialized = true;
+    } else {
+        size_t first = find_next_bit(next->vertex_ram_stale, r->bitmap_size, 0);
+        while (first < r->bitmap_size) {
+            size_t end = find_next_zero_bit(next->vertex_ram_stale,
+                                            r->bitmap_size, first);
+            size_t offset = first * TARGET_PAGE_SIZE;
+            size_t limit = MIN(end * TARGET_PAGE_SIZE, total);
+            size_t size = limit - offset;
+#if NV2A_PERF_LOG
+            int64_t span_copy_start = nv2a_clock_ns();
+#endif
+            memcpy(next->vertex_ram.mapped + offset,
+                   cur->vertex_ram.mapped + offset, size);
+#if NV2A_PERF_LOG
+            int64_t span_copy_ns = nv2a_clock_ns() - span_copy_start;
+            g_nv2a_stats.vram_working.span_copy_ns += MAX(span_copy_ns, 0);
+            g_nv2a_stats.vram_working.span_copy_runs++;
+            g_nv2a_stats.vram_working.span_copy_bytes += size;
+#endif
+            next->vertex_ram_flush_min = MIN(next->vertex_ram_flush_min,
+                                             offset);
+            next->vertex_ram_flush_max = MAX(next->vertex_ram_flush_max, limit);
+            first = find_next_bit(next->vertex_ram_stale, r->bitmap_size, end);
+        }
+    }
+    bitmap_clear(next->vertex_ram_stale, 0, r->bitmap_size);
+}
+
+static void trim_unchanged_vertex_ram_pages(const StorageBuffer *vram,
+                                             hwaddr *offset,
+                                             const uint8_t **data,
+                                             VkDeviceSize *size)
+{
+    if (*offset % TARGET_PAGE_SIZE || *size % TARGET_PAGE_SIZE) {
+        if (!memcmp(vram->mapped + *offset, *data, *size)) {
+            *size = 0;
+        }
+        return;
+    }
+
+    while (*size && !memcmp(vram->mapped + *offset, *data,
+                            TARGET_PAGE_SIZE)) {
+        *offset += TARGET_PAGE_SIZE;
+        *data += TARGET_PAGE_SIZE;
+        *size -= TARGET_PAGE_SIZE;
+    }
+    /* The first remaining page differs, so do not compare it twice. */
+    while (*size > TARGET_PAGE_SIZE &&
+           !memcmp(vram->mapped + *offset + *size - TARGET_PAGE_SIZE,
+                   *data + *size - TARGET_PAGE_SIZE, TARGET_PAGE_SIZE)) {
+        *size -= TARGET_PAGE_SIZE;
+    }
+}
+
 void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
                                         void *data, VkDeviceSize size)
 {
@@ -49,9 +196,64 @@ void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
 
     pgraph_vk_download_surfaces_in_range_if_dirty(pg, offset, size);
 
+    StorageBuffer *vram = get_staging_buffer(r, BUFFER_VERTEX_RAM);
+    assert(offset <= vram->buffer_size && size <= vram->buffer_size - offset);
+    if (!size) {
+        return;
+    }
+    const uint8_t *source = data;
     size_t start_bit = offset / TARGET_PAGE_SIZE;
     size_t end_bit = TARGET_PAGE_ALIGN(offset + size) / TARGET_PAGE_SIZE;
     size_t nbits = end_bit - start_bit;
+    bool overlaps = find_next_bit(r->cb_vertex_pages, end_bit,
+                                   start_bit) < end_bit;
+
+    FrameStagingState *fs = &r->frame_staging[r->current_frame];
+    if (overlaps && fs->vertex_ram_initialized &&
+        find_next_zero_bit(fs->uploaded_bitmap, end_bit,
+                           start_bit) == end_bit) {
+        hwaddr requested_offset = offset;
+        VkDeviceSize requested_size = size;
+#if NV2A_PERF_LOG
+        g_nv2a_stats.vram_working.upload_checks++;
+        g_nv2a_stats.vram_working.upload_check_bytes += size;
+#endif
+        /*
+         * A dirty page can still contain identical vertex data. Compare only
+         * potential hazards, after surface downloads have made data current.
+         * Skipped bytes are never written while recorded draws read them.
+         */
+        trim_unchanged_vertex_ram_pages(vram, &offset, &source, &size);
+        if (!size) {
+#if NV2A_PERF_LOG
+            g_nv2a_stats.vram_working.upload_nops++;
+            g_nv2a_stats.vram_working.upload_nop_bytes += requested_size;
+            g_nv2a_stats.vram_working.upload_finishes_avoided++;
+#endif
+            bitmap_set(r->cb_vertex_pages, start_bit, nbits);
+            return;
+        }
+        start_bit = offset / TARGET_PAGE_SIZE;
+        end_bit = TARGET_PAGE_ALIGN(offset + size) / TARGET_PAGE_SIZE;
+        nbits = end_bit - start_bit;
+        overlaps = find_next_bit(r->cb_vertex_pages, end_bit,
+                                  start_bit) < end_bit;
+        if (overlaps) {
+            /* Finish can change source data; preserve the original copy. */
+            offset = requested_offset;
+            size = requested_size;
+            source = data;
+            start_bit = offset / TARGET_PAGE_SIZE;
+            end_bit = TARGET_PAGE_ALIGN(offset + size) / TARGET_PAGE_SIZE;
+            nbits = end_bit - start_bit;
+        } else {
+#if NV2A_PERF_LOG
+            g_nv2a_stats.vram_working.upload_trim_bytes +=
+                requested_size - size;
+            g_nv2a_stats.vram_working.upload_finishes_avoided++;
+#endif
+        }
+    }
 
     /*
      * Draws read their vertices straight out of the RAM buffer, so a draw that
@@ -65,30 +267,19 @@ void pgraph_vk_update_vertex_ram_buffer(PGRAPHState *pg, hwaddr offset,
      * help within a command buffer. Submit what is already recorded before
      * overwriting a page any of it reads.
      */
-    if (find_next_bit(r->cb_vertex_pages, end_bit, start_bit) < end_bit) {
+    if (overlaps) {
         pgraph_vk_finish(pg, VK_FINISH_REASON_VERTEX_BUFFER_DIRTY);
     }
 
     nv2a_profile_inc_counter(NV2A_PROF_GEOM_BUFFER_UPDATE_1);
-    StorageBuffer *vram = get_staging_buffer(r, BUFFER_VERTEX_RAM);
-    memcpy(vram->mapped + offset, data, size);
+    vram = get_staging_buffer(r, BUFFER_VERTEX_RAM);
+    memcpy(vram->mapped + offset, source, size);
 
-    FrameStagingState *fs = &r->frame_staging[r->current_frame];
-    if (offset < fs->vertex_ram_flush_min) {
-        fs->vertex_ram_flush_min = offset;
-    }
-    VkDeviceSize end = offset + size;
-    if (end > fs->vertex_ram_flush_max) {
-        fs->vertex_ram_flush_max = end;
-    }
-    if (offset < fs->vertex_ram_propagate_min) {
-        fs->vertex_ram_propagate_min = offset;
-    }
-    if (end > fs->vertex_ram_propagate_max) {
-        fs->vertex_ram_propagate_max = end;
-    }
-
-    bitmap_set(get_uploaded_bitmap(r), start_bit, nbits);
+    pgraph_vk_vertex_ram_written(r, offset, size);
+    /*
+     * Reserve uploads conservatively too. Final vertex bindings also mark
+     * clean reads, which do not pass through this copy function.
+     */
     bitmap_set(r->cb_vertex_pages, start_bit, nbits);
 }
 
@@ -187,6 +378,44 @@ static char const * const vertex_data_array_format_to_str[] = {
     [NV097_SET_VERTEX_DATA_ARRAY_FORMAT_TYPE_CMP] = "CMP",
 };
 
+static void update_inline_attribute_value(PGRAPHState *pg, unsigned int index,
+                                           const uint8_t *data)
+{
+    VertexAttribute *attr = &pg->vertex_attributes[index];
+    float previous[4];
+
+    memcpy(previous, attr->inline_value, sizeof(previous));
+    pgraph_update_inline_value(attr, data);
+    if ((pg->uniform_attrs & (1 << index)) &&
+        memcmp(previous, attr->inline_value, sizeof(previous))) {
+        pg->vk_renderer_state->uniforms_changed = true;
+    }
+}
+
+static void update_immediate_attribute_values(PGRAPHState *pg,
+                                               bool inline_buffer)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    uint16_t mask = 0;
+
+    /* Immediate methods change values without changing the array layout. */
+    for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
+        const VertexAttribute *attr = &pg->vertex_attributes[i];
+        if (inline_buffer ? attr->inline_buffer_populated : attr->count != 0) {
+            continue;
+        }
+        mask |= 1 << i;
+        if (!(r->immediate_attrs_valid & (1 << i)) ||
+            memcmp(r->immediate_attr_values[i], attr->inline_value,
+                   sizeof(attr->inline_value))) {
+            r->uniforms_changed = true;
+            memcpy(r->immediate_attr_values[i], attr->inline_value,
+                   sizeof(attr->inline_value));
+        }
+    }
+    r->immediate_attrs_valid = mask;
+}
+
 void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
                                       unsigned int max_element,
                                       bool inline_data,
@@ -196,6 +425,7 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    update_immediate_attribute_values(pg, false);
     unsigned int num_elements = max_element - min_element + 1;
 
     if (inline_data) {
@@ -219,12 +449,24 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         memcpy(r->vertex_attribute_offsets, r->cached_attr_offsets,
                sizeof(r->cached_attr_offsets));
         for (int i = 0; i < NV2A_VERTEXSHADER_ATTRIBUTES; i++) {
-            if (r->cached_attr_layout[i].stride) {
-                hwaddr start = r->cached_attr_layout[i].base_addr +
-                               min_element * r->cached_attr_layout[i].stride;
-                update_memory_buffer(d, start,
-                                     num_elements * r->cached_attr_layout[i].stride);
+            if (!pg->vertex_attributes[i].count) {
+                continue;
             }
+            hwaddr base = r->cached_attr_layout[i].base_addr;
+            size_t stride = r->cached_attr_layout[i].stride;
+            if (stride) {
+                size_t element_size = pg->vertex_attributes[i].size *
+                                      pg->vertex_attributes[i].count;
+                hwaddr size = (num_elements - 1) * stride + element_size;
+                update_memory_buffer(d, base + min_element * stride, size);
+            }
+            /*
+             * Layout generations do not track guest RAM writes or the
+             * provoking index. Preserve the cold path's current-value latch,
+             * including RAM-backed constants whose stride is zero.
+             */
+            update_inline_attribute_value(pg, i,
+                d->vram_ptr + base + provoking_element * stride);
         }
         return;
     }
@@ -309,6 +551,8 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
         nv2a_profile_inc_counter(NV2A_PROF_ATTR_BIND);
         hwaddr attrib_data_addr;
         size_t stride;
+        size_t element_size = attr->size * attr->count;
+        assert(element_size <= sizeof(attr->inline_value));
 
         hwaddr start = 0;
         if (inline_data) {
@@ -323,12 +567,16 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             attrib_data_addr = attr_data + attr->offset - d->vram_ptr;
             stride = attr->stride;
             start = attrib_data_addr + min_element * stride;
-            update_memory_buffer(d, start, num_elements * stride);
+            if (stride) {
+                /* Include the final element, even for overlapping strides. */
+                hwaddr size = (num_elements - 1) * stride + element_size;
+                update_memory_buffer(d, start, size);
+            }
+            r->cached_attr_layout[i].base_addr = attrib_data_addr;
+            r->cached_attr_layout[i].stride = stride;
         }
 
         uint32_t provoking_element_index = provoking_element - min_element;
-        size_t element_size = attr->size * attr->count;
-        assert(element_size <= sizeof(attr->inline_value));
         const uint8_t *last_entry;
 
         if (inline_data) {
@@ -341,7 +589,7 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             // Stride of 0 indicates that only the first element should be
             // used.
             pg->uniform_attrs |= 1 << i;
-            pgraph_update_inline_value(attr, last_entry);
+            update_inline_attribute_value(pg, i, last_entry);
             NV2A_VK_DPRINTF("inline_value = {%f, %f, %f, %f}",
                             attr->inline_value[0], attr->inline_value[1],
                             attr->inline_value[2], attr->inline_value[3]);
@@ -351,7 +599,7 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
 
         NV2A_VK_DPRINTF("offset = %08" HWADDR_PRIx, attrib_data_addr);
         last_entry += stride * provoking_element_index;
-        pgraph_update_inline_value(attr, last_entry);
+        update_inline_attribute_value(pg, i, last_entry);
 
         r->vertex_attribute_to_description_location[i] =
             r->num_active_vertex_binding_descriptions;
@@ -373,11 +621,6 @@ void pgraph_vk_bind_vertex_attributes(NV2AState *d, unsigned int min_element,
             };
 
         r->vertex_attribute_offsets[i] = attrib_data_addr;
-
-        if (!inline_data) {
-            r->cached_attr_layout[i].base_addr = attrib_data_addr;
-            r->cached_attr_layout[i].stride = stride;
-        }
 
         if (needs_conversion) {
             pg->compressed_attrs |= (1 << i);
@@ -419,6 +662,7 @@ void pgraph_vk_bind_vertex_attributes_inline(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
+    update_immediate_attribute_values(pg, true);
     r->cached_num_active_bindings = 0;
 
     pg->compressed_attrs = 0;

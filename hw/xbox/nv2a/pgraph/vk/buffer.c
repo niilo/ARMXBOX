@@ -523,7 +523,8 @@ bool pgraph_vk_init_buffers(NV2AState *d, Error **errp)
         .buffer_size = memory_region_size(d->vram),
     };
 
-    r->bitmap_size = memory_region_size(d->vram) / 4096;
+    r->bitmap_size = DIV_ROUND_UP(memory_region_size(d->vram),
+                                 TARGET_PAGE_SIZE);
     r->cb_vertex_pages = bitmap_new(r->bitmap_size);
     if (!r->cb_vertex_pages) {
         error_setg(errp, "Failed to allocate vertex RAM page bitmap");
@@ -546,8 +547,8 @@ bool pgraph_vk_init_buffers(NV2AState *d, Error **errp)
         .buffer_size = vertex_inline_size,
     };
 
-    extern int xemu_get_submit_frames(void);
-    int nframes = xemu_get_submit_frames();
+    int nframes = r->num_active_frames;
+    assert(nframes >= 1 && nframes <= NUM_SUBMIT_FRAMES);
 
     size_t uniform_size;
     if (nframes >= 3)
@@ -670,11 +671,6 @@ bool pgraph_vk_init_buffers(NV2AState *d, Error **errp)
             .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
             .buffer_size = memory_region_size(d->vram),
         };
-        fs->vertex_ram_flush_min = VK_WHOLE_SIZE;
-        fs->vertex_ram_flush_max = 0;
-        fs->vertex_ram_propagate_min = VK_WHOLE_SIZE;
-        fs->vertex_ram_propagate_max = 0;
-        fs->vertex_ram_initialized = false;
 
         char name[64];
         StorageBuffer *bufs[] = {
@@ -700,12 +696,9 @@ bool pgraph_vk_init_buffers(NV2AState *d, Error **errp)
             }
         }
 
-        fs->uploaded_bitmap = bitmap_new(r->bitmap_size);
-        if (!fs->uploaded_bitmap) {
-            error_setg(errp, "Failed to allocate per-frame uploaded bitmap");
+        if (!pgraph_vk_init_vertex_ram_state(r, fs, errp)) {
             goto fail;
         }
-        bitmap_clear(fs->uploaded_bitmap, 0, r->bitmap_size);
     }
     VK_LOG_ERROR("buffer_init: per-frame staging created (%d frames, "
                  "idx=%zuMB vtx=%zuMB uni=%zuMB stg=%zuMB per-frame)",
@@ -732,8 +725,7 @@ fail:
             }
             destroy_buffer(pg, bufs[j]);
         }
-        g_free(fs->uploaded_bitmap);
-        fs->uploaded_bitmap = NULL;
+        pgraph_vk_finalize_vertex_ram_state(fs);
     }
     for (int i = 0; i < BUFFER_COUNT; i++) {
         if (r->storage_buffers[i].mapped) {
@@ -765,8 +757,7 @@ void pgraph_vk_finalize_buffers(NV2AState *d)
             }
             destroy_buffer(pg, bufs[j]);
         }
-        g_free(fs->uploaded_bitmap);
-        fs->uploaded_bitmap = NULL;
+        pgraph_vk_finalize_vertex_ram_state(fs);
     }
 
     for (int i = 0; i < BUFFER_COUNT; i++) {

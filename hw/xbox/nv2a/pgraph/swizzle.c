@@ -78,22 +78,25 @@ static inline uint32_t swizzle_increment_offset(uint32_t offset, uint32_t mask)
     return (offset - mask) & mask;
 }
 
-#ifdef __aarch64__
 /*
  * In 2D Morton order, each aligned 2x2 RGBA8 block maps to 16 contiguous
- * bytes in swizzled memory. That lets us move four pixels at a time with a
- * single NEON load/store pair while keeping the existing scalar path for
- * everything else.
+ * bytes in swizzled memory. Copy two adjacent pixels from each row instead
+ * of calculating an offset for every pixel. NEON combines the rows in one
+ * vector; constant-sized memcpy also permits unaligned buffers elsewhere.
  */
-static inline void swizzle_box_neon_2d_rgba8(const uint8_t *src_buf,
-                                             unsigned int width,
-                                             unsigned int height,
-                                             uint8_t *dst_buf,
-                                             unsigned int row_pitch,
-                                             uint32_t mask_x,
-                                             uint32_t mask_y)
+static inline void swizzle_box_2d_rgba8(const uint8_t *src_buf,
+                                        unsigned int width,
+                                        unsigned int height,
+                                        uint8_t *dst_buf,
+                                        unsigned int row_pitch,
+                                        uint32_t mask_x,
+                                        uint32_t mask_y)
 {
     uint32_t off_y = 0;
+
+    /* The low two Morton bits select pixels within a 2x2 block. */
+    mask_x >>= 2;
+    mask_y >>= 2;
 
     for (unsigned int y = 0; y < height; y += 2) {
         const uint8_t *src_row0 = src_buf + y * row_pitch;
@@ -101,30 +104,39 @@ static inline void swizzle_box_neon_2d_rgba8(const uint8_t *src_buf,
         uint32_t off_x = 0;
 
         for (unsigned int x = 0; x < width; x += 2) {
+#ifdef __aarch64__
             uint8x8_t row0 = vld1_u8(src_row0 + x * 4);
             uint8x8_t row1 = vld1_u8(src_row1 + x * 4);
 
-            vst1q_u8(dst_buf + ((size_t)off_y + off_x) * 4,
-                     vcombine_u8(row0, row1));
+            vst1q_u8(dst_buf + ((size_t)off_y + off_x) * 16,
+                      vcombine_u8(row0, row1));
+#else
+            uint8_t block[16];
 
-            off_x = swizzle_increment_offset(off_x, mask_x);
+            memcpy(block, src_row0 + x * 4, 8);
+            memcpy(block + 8, src_row1 + x * 4, 8);
+            memcpy(dst_buf + ((size_t)off_y + off_x) * 16, block, 16);
+#endif
+
             off_x = swizzle_increment_offset(off_x, mask_x);
         }
 
         off_y = swizzle_increment_offset(off_y, mask_y);
-        off_y = swizzle_increment_offset(off_y, mask_y);
     }
 }
 
-static inline void unswizzle_box_neon_2d_rgba8(const uint8_t *src_buf,
-                                               unsigned int width,
-                                               unsigned int height,
-                                               uint8_t *dst_buf,
-                                               unsigned int row_pitch,
-                                               uint32_t mask_x,
-                                               uint32_t mask_y)
+static inline void unswizzle_box_2d_rgba8(const uint8_t *src_buf,
+                                          unsigned int width,
+                                          unsigned int height,
+                                          uint8_t *dst_buf,
+                                          unsigned int row_pitch,
+                                          uint32_t mask_x,
+                                          uint32_t mask_y)
 {
     uint32_t off_y = 0;
+
+    mask_x >>= 2;
+    mask_y >>= 2;
 
     for (unsigned int y = 0; y < height; y += 2) {
         uint8_t *dst_row0 = dst_buf + y * row_pitch;
@@ -132,21 +144,26 @@ static inline void unswizzle_box_neon_2d_rgba8(const uint8_t *src_buf,
         uint32_t off_x = 0;
 
         for (unsigned int x = 0; x < width; x += 2) {
+#ifdef __aarch64__
             uint8x16_t block =
-                vld1q_u8(src_buf + ((size_t)off_y + off_x) * 4);
+                vld1q_u8(src_buf + ((size_t)off_y + off_x) * 16);
 
             vst1_u8(dst_row0 + x * 4, vget_low_u8(block));
             vst1_u8(dst_row1 + x * 4, vget_high_u8(block));
+#else
+            uint8_t block[16];
 
-            off_x = swizzle_increment_offset(off_x, mask_x);
+            memcpy(block, src_buf + ((size_t)off_y + off_x) * 16, 16);
+            memcpy(dst_row0 + x * 4, block, 8);
+            memcpy(dst_row1 + x * 4, block + 8, 8);
+#endif
+
             off_x = swizzle_increment_offset(off_x, mask_x);
         }
 
         off_y = swizzle_increment_offset(off_y, mask_y);
-        off_y = swizzle_increment_offset(off_y, mask_y);
     }
 }
-#endif
 
 static inline void swizzle_box_internal(
     const uint8_t *src_buf,
@@ -160,14 +177,6 @@ static inline void swizzle_box_internal(
 {
     uint32_t mask_x, mask_y, mask_z;
     generate_swizzle_masks(width, height, depth, &mask_x, &mask_y, &mask_z);
-
-#ifdef __aarch64__
-    if (bytes_per_pixel == 4 && depth == 1 && width >= 2 && height >= 2) {
-        swizzle_box_neon_2d_rgba8(src_buf, width, height, dst_buf, row_pitch,
-                                  mask_x, mask_y);
-        return;
-    }
-#endif
 
     /*
      * Map linear texture to swizzled texture using swizzle masks.
@@ -215,14 +224,6 @@ static inline void unswizzle_box_internal(
     uint32_t mask_x, mask_y, mask_z;
     generate_swizzle_masks(width, height, depth, &mask_x, &mask_y, &mask_z);
 
-#ifdef __aarch64__
-    if (bytes_per_pixel == 4 && depth == 1 && width >= 2 && height >= 2) {
-        unswizzle_box_neon_2d_rgba8(src_buf, width, height, dst_buf, row_pitch,
-                                    mask_x, mask_y);
-        return;
-    }
-#endif
-
     int x, y, z;
     int off_z = 0;
     for (z = 0; z < depth; z++) {
@@ -254,6 +255,14 @@ static inline void unswizzle_box_internal(
            unsigned int depth, uint8_t *dst_buf, unsigned int row_pitch,    \
            unsigned int slice_pitch, unsigned int bytes_per_pixel)          \
     {                                                                       \
+        if (bytes_per_pixel == 4 && depth == 1 && width >= 2 && height >= 2) { \
+            uint32_t mask_x, mask_y, mask_z;                                 \
+            generate_swizzle_masks(width, height, depth,                     \
+                                   &mask_x, &mask_y, &mask_z);               \
+            m##_2d_rgba8(src_buf, width, height, dst_buf, row_pitch,          \
+                         mask_x, mask_y);                                   \
+            return;                                                         \
+        }                                                                   \
         switch (bytes_per_pixel) {                                          \
         case 1:                                                             \
             C(m, 1);                                                        \

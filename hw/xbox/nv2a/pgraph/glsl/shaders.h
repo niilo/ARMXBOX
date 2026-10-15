@@ -37,6 +37,8 @@ uint64_t pgraph_glsl_hash_shader_state(const ShaderState *state);
 int pgraph_glsl_compare_shader_state(const ShaderState *a,
                                      const ShaderState *b);
 
+bool pgraph_glsl_vertex_attrs_match(PGRAPHState *pg, const VshState *state);
+
 bool pgraph_glsl_check_shader_state_dirty(PGRAPHState *pg,
                                           const ShaderState *state);
 

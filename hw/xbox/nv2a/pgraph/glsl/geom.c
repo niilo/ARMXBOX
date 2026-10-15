@@ -24,6 +24,18 @@
 #include "hw/xbox/nv2a/pgraph/prim_rewrite.h"
 #include "geom.h"
 
+bool pgraph_glsl_primitive_mode_matches(PGRAPHState *pg, const GeomState *state)
+{
+    enum ShaderPolygonMode polygon_mode = (enum ShaderPolygonMode)GET_MASK(
+        pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER),
+        NV_PGRAPH_SETUPRASTER_FRONTFACEMODE);
+
+    /* Shader geometry stores the rewritten list mode, not the guest mode. */
+    return pgraph_prim_rewrite_get_output_mode(
+               (enum ShaderPrimitiveMode)pg->primitive_mode, polygon_mode) ==
+           state->primitive_mode;
+}
+
 void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *state)
 {
     state->polygon_front_mode = (enum ShaderPolygonMode)GET_MASK(

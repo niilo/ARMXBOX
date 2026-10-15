@@ -1578,6 +1578,11 @@ extern "C" int SDL_main(int argc, char* argv[]) {
 
     std::vector<std::string> arg_storage;
     arg_storage.emplace_back("xemu");
+    /* Android loads xemu.toml above and supplies device paths explicitly.
+     * Skip QEMU's desktop config search: its compiled sysconfdir may name
+     * another package, which scoped storage rejects before machine startup.
+     */
+    arg_storage.emplace_back("-no-user-config");
     if (IsTcgTuningEnabled()) {
       const char* tcg_thread = GetTcgThreadFromEnv();
       int tcg_tb_size = GetTcgTbSizeFromEnv();

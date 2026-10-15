@@ -1596,14 +1596,20 @@ static bool fold_brcond(OptContext *ctx, TCGOp *op)
      * becomes:
      *   brcond a, b, inv(cond), label
      *
-     * This eliminates the intermediate boolean materialization that
-     * the x86 frontend generates for conditional jumps.
+     * Keep setcond here: its result may still be live on the fallthrough
+     * path (even for TEMP_EBB), or across labels for TEMP_TB. Liveness
+     * analysis will remove the boolean materialization if it is dead.
+     * The original comparison operands must also survive setcond, so
+     * do not fuse if its destination aliases either of them.
      */
     TCGOp *prev = QTAILQ_PREV(op, link);
-    if (prev && prev->opc == INDEX_op_setcond
-        && arg_is_const_val(op->args[1], 0)
-        && op->args[0] == prev->args[0]
-        && arg_temp(prev->args[0])->kind < TEMP_GLOBAL) {
+    if (prev && prev->opc == INDEX_op_setcond &&
+        TCGOP_TYPE(prev) == TCGOP_TYPE(op) &&
+        arg_is_const_val(op->args[1], 0) &&
+        op->args[0] == prev->args[0] &&
+        prev->args[0] != prev->args[1] &&
+        prev->args[0] != prev->args[2] &&
+        arg_temp(prev->args[0])->kind < TEMP_GLOBAL) {
         TCGCond brcond = op->args[2];
         TCGCond setcond = prev->args[3];
 
@@ -1611,12 +1617,10 @@ static bool fold_brcond(OptContext *ctx, TCGOp *op)
             op->args[0] = prev->args[1];
             op->args[1] = prev->args[2];
             op->args[2] = setcond;
-            tcg_op_remove(ctx->tcg, prev);
         } else if (brcond == TCG_COND_EQ) {
             op->args[0] = prev->args[1];
             op->args[1] = prev->args[2];
             op->args[2] = tcg_invert_cond(setcond);
-            tcg_op_remove(ctx->tcg, prev);
         }
     }
 #endif /* XEMU_OPT_TCG_PEEPHOLE */

@@ -61,8 +61,8 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 31
-    versionName = "1.2.10"
+    versionCode = 37
+    versionName = "1.2.11"
 
     ndk {
       abiFilters += listOf("arm64-v8a")
@@ -123,6 +123,9 @@ android {
     }
     create("profile") {
       initWith(getByName("release"))
+      // Keep the locally signed test build alongside the production app.
+      applicationIdSuffix = ".dev"
+      versionNameSuffix = "-pocket-s-rc6"
       isDebuggable = false
       isProfileable = true
       signingConfig = signingConfigs.getByName("debug")
