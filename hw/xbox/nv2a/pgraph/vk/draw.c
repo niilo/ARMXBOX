@@ -1361,6 +1361,26 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
 #endif
 }
 
+/*
+ * Transform constants and the lighting context live outside the register
+ * file, so writing them never bumps any_reg_gen. A draw that skips the
+ * uniform update (the super fast path, a merged draw) must still take it
+ * when they changed, or it renders with the previous draw's constants: an
+ * object keeps its shape but loses its lighting for a frame or two, seen as
+ * intermittent flicker in many games. These are the flags
+ * pgraph_vk_update_shader_uniforms() consumes.
+ */
+static bool draw_constants_dirty(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    /* Rewritten points/lines can share shaders but differ in polygon offset. */
+    return pg->vsh_constants_any_dirty || pg->ltctxa_any_dirty ||
+           pg->ltctxb_any_dirty || pg->ltc1_any_dirty ||
+           r->uniforms_primitive_is_polygon !=
+               (pg->primitive_mode >= PRIM_TYPE_TRIANGLES);
+}
+
 static void create_pipeline(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("Creating pipeline");
@@ -1381,9 +1401,9 @@ static void create_pipeline(PGRAPHState *pg)
         pgraph_glsl_vertex_attrs_match(pg, &r->shader_binding->state.vsh) &&
         pgraph_glsl_primitive_mode_matches(pg,
                                           &r->shader_binding->state.geom)) {
-        if (r->uniforms_changed || pg->vsh_constants_any_dirty ||
-            pg->ltctxa_any_dirty || pg->ltctxb_any_dirty ||
-            pg->ltc1_any_dirty) {
+        /* Registers can change uniform values without changing the pipeline. */
+        if (r->uniforms_changed || pg->any_reg_gen != r->last_any_reg_gen ||
+            draw_constants_dirty(pg)) {
             pgraph_vk_update_shader_uniforms(pg);
         }
         OPT_STAT_INC(pipeline_early_hits);
@@ -3049,20 +3069,6 @@ void pgraph_vk_end_nondraw_commands(PGRAPHState *pg, VkCommandBuffer cmd)
 // buffer. For other reasons though (like descriptor set amount, surface
 // changes, etc) we do flush often.
 
-/*
- * Transform constants and the lighting context live outside the register
- * file, so writing them never bumps any_reg_gen. A draw that skips the
- * uniform update (the super fast path, a merged draw) must still take it
- * when they changed, or it renders with the previous draw's constants: an
- * object keeps its shape but loses its lighting for a frame or two, seen as
- * intermittent flicker in many games. These are the flags
- * pgraph_vk_update_shader_uniforms() consumes.
- */
-static bool draw_constants_dirty(PGRAPHState *pg)
-{
-    return pg->vsh_constants_any_dirty || pg->ltctxa_any_dirty ||
-           pg->ltctxb_any_dirty || pg->ltc1_any_dirty;
-}
 
 static bool texture_bind_preserves_draw_state(const PGRAPHVkState *r)
 {
@@ -3907,10 +3913,12 @@ static void begin_draw(PGRAPHState *pg)
             push_texture_indices(pg);
 #endif
             /*
-             * Pipeline and descriptors now consume the current shader state.
-             * Keep changes pending until this point, including queued setup.
+             * Pipeline and descriptors consume the current shader and texture
+             * state. Keep changes pending until here, including queued setup
+             * and repeated texture binds before descriptors are prepared.
              */
             r->shader_bindings_changed = false;
+            r->texture_bindings_changed = false;
         }
     }
 

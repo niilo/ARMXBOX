@@ -2388,6 +2388,16 @@ bool pgraph_vk_check_textures_fast_skip(PGRAPHState *pg)
     return true;
 }
 
+static float texture_uniform_scale(const TextureBinding *binding)
+{
+    if (!binding) {
+        return 1.0f;
+    }
+    BasicColorFormatInfo format =
+        kelvin_color_format_info_map[binding->key.state.color_format];
+    return format.linear ? binding->key.scale : 1.0f;
+}
+
 void pgraph_vk_bind_textures(NV2AState *d)
 {
     NV2A_VK_DGROUP_BEGIN("%s", __func__);
@@ -2395,13 +2405,16 @@ void pgraph_vk_bind_textures(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    r->texture_bindings_changed = false;
-
     if (!check_textures_dirty(pg)) {
         NV2A_VK_DPRINTF("Not dirty");
         NV2A_VK_DGROUP_END();
         update_timestamps(r);
         return;
+    }
+
+    float previous_scales[NV2A_MAX_TEXTURES];
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        previous_scales[i] = texture_uniform_scale(r->texture_bindings[i]);
     }
 
     resolve_possibly_dirty_textures(d);
@@ -2481,6 +2494,13 @@ void pgraph_vk_bind_textures(NV2AState *d)
         }
 
         pg->texture_dirty[i] = false;
+    }
+
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        if (previous_scales[i] !=
+            texture_uniform_scale(r->texture_bindings[i])) {
+            r->uniforms_changed = true;
+        }
     }
 
     if (r->texture_bindings_changed) {

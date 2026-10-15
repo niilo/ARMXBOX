@@ -53,6 +53,7 @@ typedef struct PGRAPHVkState {
     ShaderBinding *shader_binding;
     bool pipeline_binding_changed, shader_bindings_changed;
     bool pipeline_state_dirty, need_descriptor_rebind, uniforms_changed;
+    bool uniforms_primitive_is_polygon;
     bool texture_bindings_changed;
     bool framebuffer_dirty, in_command_buffer, in_render_pass;
     bool bindless_textures_supported, push_descriptors_supported;
@@ -67,6 +68,7 @@ typedef struct PGRAPHVkState {
     unsigned texture_vram_gen, last_texture_vram_gen;
     unsigned last_texture_state_gen, last_shader_state_gen;
     unsigned last_pipeline_state_gen, last_non_dynamic_reg_gen;
+    unsigned last_any_reg_gen;
     unsigned pipeline_vertex_attr_gen;
     unsigned pipeline_num_active_attr_descs, pipeline_num_active_bind_descs;
     unsigned num_active_vertex_attribute_descriptions;
@@ -84,6 +86,7 @@ typedef struct PGRAPHState {
     unsigned int16_attrs, compressed_attrs, surface_scale_factor;
     unsigned texture_state_gen, shader_state_gen, pipeline_state_gen;
     unsigned non_dynamic_reg_gen;
+    unsigned any_reg_gen;
     unsigned vertex_attr_gen;
     struct { unsigned zeta_format; } surface_shape;
     bool texture_matrix_enable[4], program_data_dirty, clearing;
@@ -153,6 +156,7 @@ static void reset(unsigned mode, unsigned poly)
     pg.vk_renderer_state = &r;
     pg.renderer = &backend;
     pg.primitive_mode = mode;
+    r.uniforms_primitive_is_polygon = mode >= PRIM_TYPE_TRIANGLES;
     pg.surface_scale_factor = shader.state.vsh.surface_scale_factor = 1;
     polygon(poly);
     pgraph_glsl_set_geom_state(&pg, &shader.state.geom);

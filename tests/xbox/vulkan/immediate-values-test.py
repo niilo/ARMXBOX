@@ -39,6 +39,7 @@ def main():
         shaders = read(prefix + 'glsl/shaders.c')
         methods = read(prefix + 'pgraph.c')
         regs = read('hw/xbox/nv2a/nv2a_regs.h')
+        enums = read(prefix + 'vsh_regs.h')
         arrays = [definition(vertex, r'^static const VkFormat ' + name + r'\[')
                   for name in ('float_to_count', 'ub_to_count', 's1_to_count',
                                's32k_to_count', 's32k_int_to_count')]
@@ -53,8 +54,11 @@ def main():
             if 'static void ' + name + '(' in vertex:
                 binder.append(function(vertex, name))
         binder.append(function(vertex, 'pgraph_vk_bind_vertex_attributes'))
-        pieces = [function(vertex, 'pgraph_vk_bind_vertex_attributes_inline'),
+        start = enums.index('enum ShaderPrimitiveMode {')
+        pieces = [braced(enums, start) + ';',
+                  function(vertex, 'pgraph_vk_bind_vertex_attributes_inline'),
                   function(common, 'pgraph_allocate_inline_buffer_vertices'),
+                  function(draw, 'draw_constants_dirty'),
                   function(draw, 'push_vertex_attr_values')]
         if 'bool pgraph_glsl_vertex_attrs_match(' in shaders:
             pieces.append(function(shaders, 'pgraph_glsl_vertex_attrs_match'))

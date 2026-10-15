@@ -1581,9 +1581,10 @@ static void invalidate_surface(NV2AState *d, SurfaceBinding *surface)
  *
  * Shelving preserves the VkImage and its GPU-side allocation so that if
  * the same VRAM address is later re-bound with an identical format,
- * the image can be re-used without recreation or re-upload (see
- * get_shelved_surface).  The surface is unbound, its CPU access
- * callback is unregistered, and it is removed from the address map.
+ * the allocation can be reused without recreation (see get_shelved_surface).
+ * The surface is unbound, its CPU access callback is unregistered, and it
+ * is removed from the address map. Revival must refresh its pixels from
+ * VRAM because CPU writes during shelving do not set upload_pending.
  */
 static void shelve_surface(NV2AState *d, SurfaceBinding *surface)
 {
@@ -1612,8 +1613,8 @@ static void shelve_surface(NV2AState *d, SurfaceBinding *surface)
 /*
  * Look up and reclaim a shelved surface whose format, dimensions, and
  * pitch exactly match the target.  Returns NULL on miss.  On hit the
- * surface is removed from the shelf and its VkImage can be reused
- * directly, avoiding the cost of image creation and VRAM upload.
+ * surface is removed from the shelf and its VkImage allocation can be reused,
+ * avoiding the cost of image creation. Its pixels still need a VRAM upload.
  */
 static SurfaceBinding *get_shelved_surface(PGRAPHVkState *r,
                                            hwaddr vram_addr,
@@ -2870,11 +2871,14 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
 
         if (should_create) {
             int64_t _gt2 = nv2a_clock_ns();
-            bool unshelved = false;
             surface = get_shelved_surface(r, target.vram_addr, &target);
             if (surface) {
                 migrate_surface_image(&target, surface);
-                unshelved = true;
+                /*
+                 * Shelving removed the CPU access callback. Reuse the image
+                 * allocation, but retain target's pending upload so untracked
+                 * VRAM writes replace its old pixels before the next draw.
+                 */
             } else {
                 surface = get_any_compatible_invalid_surface(r, &target);
                 if (surface) {
@@ -2888,16 +2892,6 @@ static void update_surface_part(NV2AState *d, bool upload, bool color)
 
             *surface = target;
             set_surface_label(pg, surface);
-
-            if (unshelved) {
-                /*
-                 * The VkImage already contains valid data from the
-                 * previous binding, so skip the VRAM upload and mark
-                 * the surface as initialized.
-                 */
-                surface->upload_pending = false;
-                surface->initialized = true;
-            }
 
             int64_t _gt3 = nv2a_clock_ns();
             surface_put(d, surface);

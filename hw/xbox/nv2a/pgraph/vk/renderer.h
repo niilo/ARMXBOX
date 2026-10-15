@@ -1394,6 +1394,7 @@ typedef struct PGRAPHVkState {
     uint64_t uniform_buffer_hashes[2];
     size_t uniform_buffer_offsets[2];
     bool uniforms_changed;
+    bool uniforms_primitive_is_polygon;
     uint64_t last_vsh_uniform_hash;
     uint64_t last_psh_uniform_hash;
 

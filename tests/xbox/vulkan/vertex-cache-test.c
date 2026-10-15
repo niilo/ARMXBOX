@@ -66,6 +66,7 @@ typedef struct PGRAPHVkState {
     bool shader_bindings_changed, pipeline_state_dirty;
     unsigned command_buffer;
     unsigned last_texture_state_gen, texture_vram_gen, last_texture_vram_gen;
+    unsigned last_any_reg_gen;
     unsigned last_shader_state_gen, last_pipeline_state_gen;
     unsigned pipeline_vertex_attr_gen;
     unsigned pipeline_num_active_attr_descs, pipeline_num_active_bind_descs;
@@ -79,6 +80,7 @@ typedef struct PGRAPHVkState {
     uint16_t cached_compressed_attrs, cached_uniform_attrs;
     uint16_t cached_swizzle_attrs, cached_int16_attrs;
     bool sscaled_vertex_supported, uniforms_changed;
+    bool uniforms_primitive_is_polygon;
     VkVertexInputAttributeDescription vertex_attribute_descriptions[16];
     VkVertexInputAttributeDescription cached_attr_descs[16];
     VkVertexInputBindingDescription vertex_binding_descriptions[16];
@@ -98,6 +100,7 @@ typedef struct PGRAPHState {
     unsigned inline_buffer_length;
 #ifdef VERTEX_IMMEDIATE_TEST
     unsigned texture_state_gen, shader_state_gen, pipeline_state_gen;
+    unsigned any_reg_gen;
     unsigned primitive_mode;
     bool vsh_constants_any_dirty, ltctxa_any_dirty;
     bool ltctxb_any_dirty, ltc1_any_dirty;

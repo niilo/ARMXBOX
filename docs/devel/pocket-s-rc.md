@@ -1,9 +1,46 @@
-# X1 BOX 1.2.11 Pocket S RC7
+# X1 BOX 1.2.11 Pocket S RC8
 
 This ARM64 Android candidate contains changes that can be checked without game
 files or target hardware. It is intended for the AYANEO Pocket S on Android 13.
 Actual startup, game compatibility, frame pacing and sustained performance still
 need device testing. Native Linux/Steam Deck benefits are not measured here.
+
+## RC8 uniform and texture freshness
+
+The RC7 full settled SSX 3 runs average 42.89 FPS at 1x and 42.56 FPS at 3x.
+Their primary sections average 39.71/39.10 FPS. Shader-state preparation falls
+from about 1.5 to 0.7 ms per flip, but the user reports more vertex/texture
+popping. Scene progression, adaptive pacing and reversed starting thermal
+conditions prevent a controlled speedup claim.
+
+RC8 repairs missing freshness checks in paths made more usable by RC7:
+
+- Material alpha and light vectors stored outside the register arrays mark the
+  existing lighting dirty flag when their bits change. Pipeline reuse refreshes
+  register-backed uniforms when the register generation changes, including
+  after a render pass ends. The last serialized primitive class also prevents
+  stale polygon-offset uniforms when rewritten points/lines share a pipeline.
+- Repeated texture setup retains a pending descriptor update until actual draw
+  consumers use it. Switching between linear textures with different effective
+  scales forces their shader uniform to refresh. A separate plain-descriptor
+  fallback initializes its image key and avoids an invalid cache slot when
+  descriptor caching is disabled; this optional path was not the logged mode.
+- A revived shelved surface refreshes from authoritative VRAM because CPU writes
+  while shelved have no access callback. Its allocation/image/view are reused.
+  The upload transition also orders previous fragment texture reads before
+  transfer writes. Active compatible surfaces retain their normal reuse path.
+
+The tests reproduce these source defects against immutable RC7, including
+actual uniform values and descriptor images. Their role in the specific SSX 3
+popping events needs device confirmation. Correct freshness can require work
+that the invalid fast path skipped, so a quality fix may cost some cache hits.
+Required assertions, driver workarounds and resource retirement remain intact.
+
+The RC8/RC9/RC10 test batch shares version code 39, with distinct version names.
+This permits switching between its APKs using an ordinary update with the same
+signing certificate and existing data. Test RC8 first, then RC9 and RC10,
+keeping Turnip/options and starting temperatures comparable. Later candidates
+add CPU/GPU command-efficiency and audio work on top of this correction.
 
 ## RC7 shader state and CPU work reductions
 
@@ -178,7 +215,7 @@ skipping QEMU's desktop config search while preserving explicit TOML settings,
 firmware, disks and game inputs. RC2 device logs confirmed successful SSX 3
 startup and gameplay with Turnip.
 
-Install RC7 over RC6 with the same package and signing certificate. Existing
+Install RC8 over RC7 with the same package and signing certificate. Existing
 test-app setup and files are retained. The production app remains separate.
 
 ## Changes retained from RC1
@@ -213,14 +250,14 @@ compatibility with all drivers or games.
 The `profile` build uses release optimization, LTO and resource shrinking, is
 profileable and non-debuggable, and is signed with the local test certificate.
 It appears as **X1 BOX Test**, package `com.izzy2lost.x1box.dev`, version
-`1.2.11-pocket-s-rc7` (code 38). It installs alongside the production app and
+`1.2.11-pocket-s-rc8` (code 39). It installs alongside the production app and
 uses separate app data. It shares its package with development/debug builds;
 updating one of those requires the same test signing certificate.
 
 Verify the supplied SHA-256, then open the APK on the device or use:
 
 ```sh
-adb install -r x1box-1.2.11-pocket-s-rc7-arm64-v8a.apk
+adb install -r x1box-1.2.11-pocket-s-rc8-arm64-v8a.apk
 ```
 
 Keep the normal app installed. Select your own firmware and games in the test
@@ -232,15 +269,15 @@ The delivery manifest records the exact APK hash and certificate fingerprint.
 1. Keep the same Turnip driver used for the RC2 retests. Repeat the same rider
    and downhill section in SSX 3, first at 1x and then at 3x. Continue through
    the later section that showed vertex popping in earlier runs. Do not change other
-   graphics/performance options between RC6 and RC7. Warm the
+   graphics/performance options between RC7 and RC8. Warm the
    scene before measurement and keep power/fan/charging settings and starting
    temperature comparable.
 2. Record whether terrain/objects still flash or disappear, whether triangles
    break, and the approximate time of any issue in the captured log. Record
-   FPS alongside audio, controls and image quality. RC7 does not claim 60 FPS
+   FPS alongside audio, controls and image quality. RC8 does not claim 60 FPS
    or a measured speedup on the device.
 3. If SSX 3 is stable, check PGR2 and the remaining titles below. Keep driver
-   comparisons and cold-cache runs separate from the first RC7 regression
+   comparisons and cold-cache runs separate from the first RC8 regression
    check. Extend a promising configuration to 15 minutes for sustained
    behavior. The FPS overlay does not establish emulation speed or frame-time
    percentiles.
@@ -259,7 +296,7 @@ Capture the device identity and a startup/gameplay log if ADB is available:
 adb shell getprop ro.product.model
 adb shell getprop ro.build.fingerprint
 adb shell getprop ro.soc.model
-adb logcat -v threadtime > pocket-s-rc7.log
+adb logcat -v threadtime > pocket-s-rc8.log
 ```
 
 Start log capture before opening the app and stop it with Ctrl-C after the run.
@@ -311,6 +348,10 @@ python3 tests/xbox/vulkan/shader-consumption-test.py --sanitize
 python3 tests/xbox/vulkan/uniform-copy-test.py --negative-control
 python3 tests/xbox/vulkan/uniform-copy-test.py --sanitize
 python3 tests/xbox/pgraph/index-batch-test.py --sanitize
+python3 tests/xbox/vulkan/uniform-freshness-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/texture-notification-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/surface-revival-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/image-upload-ordering-test.py --sanitize --negative-control
 python3 tests/xbox/android-startup/test-startup.py --build-dir build
 ```
 

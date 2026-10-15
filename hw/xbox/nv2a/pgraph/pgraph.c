@@ -2615,6 +2615,9 @@ DEF_METHOD_INC(NV097, SET_MATERIAL_EMISSION)
 
 DEF_METHOD(NV097, SET_MATERIAL_ALPHA)
 {
+    /* Uniform-only lighting values share the lighting dirty notification. */
+    pg->ltctxa_any_dirty |=
+        memcmp(&pg->material_alpha, &parameter, sizeof(parameter)) != 0;
     pg->material_alpha = *(float*)&parameter;
 }
 
@@ -3119,11 +3122,18 @@ DEF_METHOD_INC(NV097, SET_LIGHT_AMBIENT_COLOR)
     case NV097_SET_LIGHT_INFINITE_HALF_VECTOR ...
             NV097_SET_LIGHT_INFINITE_HALF_VECTOR + 8:
         part -= NV097_SET_LIGHT_INFINITE_HALF_VECTOR / 4;
+        /* These vectors live outside the register generation counters. */
+        pg->ltctxa_any_dirty |=
+            memcmp(&pg->light_infinite_half_vector[slot][part], &parameter,
+                   sizeof(parameter)) != 0;
         pg->light_infinite_half_vector[slot][part] = *(float*)&parameter;
         break;
     case NV097_SET_LIGHT_INFINITE_DIRECTION ...
             NV097_SET_LIGHT_INFINITE_DIRECTION + 8:
         part -= NV097_SET_LIGHT_INFINITE_DIRECTION / 4;
+        pg->ltctxa_any_dirty |=
+            memcmp(&pg->light_infinite_direction[slot][part], &parameter,
+                   sizeof(parameter)) != 0;
         pg->light_infinite_direction[slot][part] = *(float*)&parameter;
         break;
     case NV097_SET_LIGHT_SPOT_FALLOFF ...
@@ -3143,11 +3153,17 @@ DEF_METHOD_INC(NV097, SET_LIGHT_AMBIENT_COLOR)
     case NV097_SET_LIGHT_LOCAL_POSITION ...
             NV097_SET_LIGHT_LOCAL_POSITION + 8:
         part -= NV097_SET_LIGHT_LOCAL_POSITION / 4;
+        pg->ltctxa_any_dirty |=
+            memcmp(&pg->light_local_position[slot][part], &parameter,
+                   sizeof(parameter)) != 0;
         pg->light_local_position[slot][part] = *(float*)&parameter;
         break;
     case NV097_SET_LIGHT_LOCAL_ATTENUATION ...
             NV097_SET_LIGHT_LOCAL_ATTENUATION + 8:
         part -= NV097_SET_LIGHT_LOCAL_ATTENUATION / 4;
+        pg->ltctxa_any_dirty |=
+            memcmp(&pg->light_local_attenuation[slot][part], &parameter,
+                   sizeof(parameter)) != 0;
         pg->light_local_attenuation[slot][part] = *(float*)&parameter;
         break;
     default:
