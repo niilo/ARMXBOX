@@ -9,7 +9,7 @@ $(PKG)_FILE     := SDL3-$($(PKG)_VERSION).tar.gz
 $(PKG)_CHECKSUM := 12b34280415ec8418c864408b93d008a20a6530687ee613d60bfbd20411f2785
 $(PKG)_URL      := https://github.com/libsdl-org/SDL/releases/download/release-$($(PKG)_VERSION)/$($(PKG)_FILE)
 $(PKG)_GH_CONF  := libsdl-org/SDL/releases/tag,release-,,
-$(PKG)_DEPS     := cc cmake
+$(PKG)_DEPS     := cc
 
 define $(PKG)_BUILD
     cd '$(BUILD_DIR)' && $(TARGET)-cmake '$(SOURCE_DIR)' \

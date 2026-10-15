@@ -20,6 +20,7 @@
 #include "ui/xemu-settings.h"
 #include "renderer.h"
 #include "qemu/error-report.h"
+#include <SDL3/SDL_video.h>
 #include <math.h>
 #ifdef __ANDROID__
 #include <EGL/egl.h>
@@ -230,19 +231,19 @@ static bool load_gl_external_memory_symbols(void)
     gl_external_memory_loaded = true;
 
     p_glDeleteMemoryObjectsEXT =
-        (PFNGLDELETEMEMORYOBJECTSEXTPROC)eglGetProcAddress(
+        (PFNGLDELETEMEMORYOBJECTSEXTPROC)SDL_GL_GetProcAddress(
             "glDeleteMemoryObjectsEXT");
     p_glIsMemoryObjectEXT =
-        (PFNGLISMEMORYOBJECTEXTPROC)eglGetProcAddress(
+        (PFNGLISMEMORYOBJECTEXTPROC)SDL_GL_GetProcAddress(
             "glIsMemoryObjectEXT");
     p_glCreateMemoryObjectsEXT =
-        (PFNGLCREATEMEMORYOBJECTSEXTPROC)eglGetProcAddress(
+        (PFNGLCREATEMEMORYOBJECTSEXTPROC)SDL_GL_GetProcAddress(
             "glCreateMemoryObjectsEXT");
     p_glImportMemoryFdEXT =
-        (PFNGLIMPORTMEMORYFDEXTPROC)eglGetProcAddress(
+        (PFNGLIMPORTMEMORYFDEXTPROC)SDL_GL_GetProcAddress(
             "glImportMemoryFdEXT");
     p_glTexStorageMem2DEXT =
-        (PFNGLTEXSTORAGEMEM2DEXTPROC)eglGetProcAddress(
+        (PFNGLTEXSTORAGEMEM2DEXTPROC)SDL_GL_GetProcAddress(
             "glTexStorageMem2DEXT");
 
     gl_external_memory_available = p_glDeleteMemoryObjectsEXT &&
