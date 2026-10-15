@@ -77,8 +77,7 @@ jobs:
         elif [[ "${{ matrix.arch }}" == "arm64" ]]; then
           # FIXME: llvm-mingw ThinLTO has an issue with `qemu_build_not_reached_always`
           #        being intentionaly undefined (to ensure 'unreachable' paths are
-          #        optimized out). Regular LTO doesn't pass cv2pdb. Resolve linking
-          #        failure and have llvm toolchain generate PDB directly.
+          #        optimized out). Keep LTO disabled until that link failure is resolved.
           opts=()
         fi
         if [[ "${{ matrix.arch }}" == "arm64" ]]; then

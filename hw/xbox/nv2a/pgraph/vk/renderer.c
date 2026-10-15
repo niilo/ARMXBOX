@@ -35,6 +35,7 @@ extern bool xemu_get_frame_skip(void);
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include <glib/gstdio.h>
 
 typedef struct {
     uint32_t shader_cache_abi;
@@ -651,13 +652,13 @@ static void diag_init_session(unsigned int start_frame, int num_frames)
         for (char *p = tmp + 1; *p; p++) {
             if (*p == '/') {
                 *p = '\0';
-                int r = mkdir(tmp, 0755);
+                int r = g_mkdir(tmp, 0755);
                 DIAG_LOG("mkdir '%s' -> %d (errno=%d)\n", tmp, r,
                          (r < 0 && errno != EEXIST) ? errno : 0);
                 *p = '/';
             }
         }
-        int r = mkdir(tmp, 0755);
+        int r = g_mkdir(tmp, 0755);
         DIAG_LOG("mkdir '%s' -> %d (errno=%d)\n", tmp, r,
                  (r < 0 && errno != EEXIST) ? errno : 0);
     }
