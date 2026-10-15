@@ -9,9 +9,10 @@ unit suite, and builds arm64 Android debug APKs on Linux and Apple Silicon
 macOS. APK artifacts are named `x1box-android-<host>-Debug` and retained for
 14 days.
 
-Run `Build for Android` manually to choose `Debug` or `Profile`. Both use
-development signing; production signing keys and Play Store publishing are
-not required. APKs are available under the run's **Artifacts** section.
+Run `Build for Android` manually to choose `Debug`, `Profile`, or `Release`.
+Debug and Profile use development signing; Release requires the signing secrets
+below and produces a signed APK and AAB. Packages are available under the run's
+**Artifacts** section.
 The Android toolchain matches `android/README.md`.
 Linux packages link the pinned SDL3 statically because Ubuntu 22.04 does not
 provide an SDL3 runtime package; macOS bundles it in the app.
@@ -20,8 +21,49 @@ provide an SDL3 runtime package; macOS bundles it in the app.
 
 Publishing is intentional: `Pre-release` is manually dispatched, `Release
 (Dispatched)` increments the highest `vX.Y.Z` tag and creates a draft, and
-pushing a `v*` tag also creates a draft. Releases include desktop packages,
-source, and Android debug APKs. Review a draft before publishing it.
+pushing a `v*` tag also creates a draft. Standard releases include desktop
+packages, source, and signed Android release APKs and AABs built on Linux and
+macOS. `Pre-release` continues to include Android debug APKs. Review a draft
+before publishing it; an AAB is uploaded to Google Play separately.
+
+### Android release signing
+
+Configure these repository Actions secrets in this fork:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | Base64-encoded release keystore (`.jks` or `.p12`) |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Alias of the signing key |
+| `ANDROID_KEY_PASSWORD` | Signing key password |
+
+Use the same key for subsequent versions and keep a secure backup of the
+keystore and credentials. A new fork key cannot update an installation signed
+with the upstream project's key. Never commit signing files or passwords.
+GitHub's CLI accepts secret values on standard input, for example:
+
+```bash
+base64 < /path/to/release.jks | tr -d '\n' | \
+  gh secret set ANDROID_KEYSTORE_BASE64 --repo niilo/ARMXBOX
+gh secret set ANDROID_KEYSTORE_PASSWORD --repo niilo/ARMXBOX
+gh secret set ANDROID_KEY_ALIAS --repo niilo/ARMXBOX
+gh secret set ANDROID_KEY_PASSWORD --repo niilo/ARMXBOX
+```
+
+Only release entry points forward signing secrets through the reusable build
+workflows; normal CI does not receive them. The Android job validates the key
+before compiling, creates temporary signing files with restricted permissions,
+and removes them even after failure. APK and AAB signatures must verify against
+that key's certificate before upload; missing or invalid secrets fail the job.
+Only package files are uploaded, and signing files are excluded from caches.
+See [GitHub's reusable workflow secret documentation](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows#passing-secrets-to-nested-workflows)
+for the explicit forwarding used here.
+
+To test signing without creating a tag or release, run `Build for Android`
+manually with `variant=Release`. Artifacts contain
+`x1box-android-release-<host>.apk` and `.aab`. Update `versionCode` and
+`versionName` in `android/app/build.gradle.kts` before a new app version;
+GitHub release tags do not change these values.
 
 `Build xemu-win64-toolchain` validates changed Dockerfiles. To publish,
 dispatch it with `publish=true`; images go to

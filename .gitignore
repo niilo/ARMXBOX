@@ -42,3 +42,6 @@ replay_pid*.log
 *.txt
 .claude/settings.json
 android/key.properties
+*.jks
+*.keystore
+*.p12

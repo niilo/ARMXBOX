@@ -8,16 +8,25 @@ on:
         required: true
         type: string
       variant:
-        description: Development APK variant (Debug or Profile)
+        description: Android variant (Debug, Profile, or signed Release)
         default: Debug
         type: string
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
   workflow_dispatch:
     inputs:
       variant:
-        description: Development APK variant
+        description: Android variant (Release requires signing secrets)
         default: Debug
         type: choice
-        options: [Debug, Profile]
+        options: [Debug, Profile, Release]
 
 permissions:
   contents: read
@@ -53,6 +62,14 @@ jobs:
       - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548
         with:
           python-version: '3.12'
+      - name: Prepare release signing
+        if: env.VARIANT == 'Release'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python3 .github/scripts/android-signing.py prepare
       - name: Install native build tools
         shell: bash
         run: |
@@ -73,13 +90,23 @@ jobs:
             ~/.cargo/git
           key: android-${{ runner.os }}-${{ hashFiles('android/**/*.gradle.kts', 'android/gradle/wrapper/gradle-wrapper.properties', 'android/**/Cargo.lock') }}
           restore-keys: android-${{ runner.os }}-
-      - name: Build APK
+      - name: Build Android packages
         shell: bash
         run: |
-          case "$VARIANT" in Debug|Profile) ;; *) echo 'Unsupported APK variant' >&2; exit 1 ;; esac
+          case "$VARIANT" in Debug|Profile|Release) ;; *) echo 'Unsupported Android variant' >&2; exit 1 ;; esac
           export PATH="$ANDROID_HOME/cmake/3.22.1/bin:$PATH"
-          ./android/gradlew -p android --no-daemon "assemble${VARIANT}"
-      - name: Name APK
+          tasks=("assemble${VARIANT}")
+          if [ "$VARIANT" = Release ]; then tasks+=(bundleRelease); fi
+          ./android/gradlew -p android --no-daemon "${tasks[@]}"
+      - name: Verify release signatures
+        if: env.VARIANT == 'Release'
+        env:
+          OUTPUT_DIR: ${{ matrix.output }}
+        run: |
+          python3 .github/scripts/android-signing.py verify \
+            "android/app/${OUTPUT_DIR}/outputs/apk/release/app-release.apk" \
+            "android/app/${OUTPUT_DIR}/outputs/bundle/release/app-release.aab"
+      - name: Name Android packages
         shell: bash
         env:
           OUTPUT_DIR: ${{ matrix.output }}
@@ -89,11 +116,20 @@ jobs:
           mkdir -p dist-android
           cp "android/app/${OUTPUT_DIR}/outputs/apk/${variant}/app-${variant}.apk" \
             "dist-android/x1box-android-${variant}-${BUILD_HOST}.apk"
-      - name: Upload APK
+          if [ "$VARIANT" = Release ]; then
+            cp "android/app/${OUTPUT_DIR}/outputs/bundle/release/app-release.aab" \
+              "dist-android/x1box-android-release-${BUILD_HOST}.aab"
+          fi
+      - name: Remove release signing files
+        if: always() && env.VARIANT == 'Release'
+        run: python3 .github/scripts/android-signing.py cleanup
+      - name: Upload Android packages
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: x1box-android-${{ matrix.host }}-${{ inputs.variant || 'Debug' }}
-          path: dist-android/*.apk
+          path: |
+            dist-android/*.apk
+            dist-android/*.aab
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

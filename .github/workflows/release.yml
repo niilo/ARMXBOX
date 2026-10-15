@@ -16,6 +16,15 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
 
 permissions:
   contents: read
@@ -26,6 +35,12 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ inputs.ref }}
+      android_variant: ${{ inputs.pre-release && 'Debug' || 'Release' }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
   delete_prerelease:
     name: Delete pre-release
@@ -84,3 +99,4 @@ jobs:
           dist/xemu*-macos-universal*.zip
           dist/xemu*.AppImage
           dist/x1box-android-*.apk
+          dist/x1box-android-*.aab
