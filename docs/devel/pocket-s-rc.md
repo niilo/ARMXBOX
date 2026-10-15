@@ -1,9 +1,24 @@
-# X1 BOX 1.2.11 Pocket S RC8
+# X1 BOX 1.2.11 Pocket S RC9
 
 This ARM64 Android candidate contains changes that can be checked without game
 files or target hardware. It is intended for the AYANEO Pocket S on Android 13.
 Actual startup, game compatibility, frame pacing and sustained performance still
 need device testing. Native Linux/Steam Deck benefits are not measured here.
+
+## RC9 Vulkan command efficiency
+
+RC9 includes all RC8 freshness and upload-ordering corrections. It compares
+only register bits consumed by each existing Vulkan dynamic-state command
+group. A fragment alpha-reference change previously reissued four depth/stencil
+and three blend/color commands even though none of their arguments changed.
+RC9 avoids those seven commands while retaining the actual alpha uniform update.
+
+Command bodies, argument calculations, capability checks and cache resets on
+new command buffers/pipeline binds remain unchanged. A differential oracle
+checks the resulting recorded Vulkan state after each transition, including
+clear draws, extension combinations and individual relevant/ignored bits.
+This establishes equivalent state and fewer redundant commands for those
+patterns; actual device command frequency and FPS benefit need measurement.
 
 ## RC8 uniform and texture freshness
 
@@ -215,7 +230,7 @@ skipping QEMU's desktop config search while preserving explicit TOML settings,
 firmware, disks and game inputs. RC2 device logs confirmed successful SSX 3
 startup and gameplay with Turnip.
 
-Install RC8 over RC7 with the same package and signing certificate. Existing
+Install RC9 over RC8 (or RC7) with the same package and signing certificate. Existing
 test-app setup and files are retained. The production app remains separate.
 
 ## Changes retained from RC1
@@ -250,14 +265,14 @@ compatibility with all drivers or games.
 The `profile` build uses release optimization, LTO and resource shrinking, is
 profileable and non-debuggable, and is signed with the local test certificate.
 It appears as **X1 BOX Test**, package `com.izzy2lost.x1box.dev`, version
-`1.2.11-pocket-s-rc8` (code 39). It installs alongside the production app and
+`1.2.11-pocket-s-rc9` (code 39). It installs alongside the production app and
 uses separate app data. It shares its package with development/debug builds;
 updating one of those requires the same test signing certificate.
 
 Verify the supplied SHA-256, then open the APK on the device or use:
 
 ```sh
-adb install -r x1box-1.2.11-pocket-s-rc8-arm64-v8a.apk
+adb install -r x1box-1.2.11-pocket-s-rc9-arm64-v8a.apk
 ```
 
 Keep the normal app installed. Select your own firmware and games in the test
@@ -269,15 +284,15 @@ The delivery manifest records the exact APK hash and certificate fingerprint.
 1. Keep the same Turnip driver used for the RC2 retests. Repeat the same rider
    and downhill section in SSX 3, first at 1x and then at 3x. Continue through
    the later section that showed vertex popping in earlier runs. Do not change other
-   graphics/performance options between RC7 and RC8. Warm the
+   graphics/performance options between RC8 and RC9. Warm the
    scene before measurement and keep power/fan/charging settings and starting
    temperature comparable.
 2. Record whether terrain/objects still flash or disappear, whether triangles
    break, and the approximate time of any issue in the captured log. Record
-   FPS alongside audio, controls and image quality. RC8 does not claim 60 FPS
+   FPS alongside audio, controls and image quality. RC9 does not claim 60 FPS
    or a measured speedup on the device.
 3. If SSX 3 is stable, check PGR2 and the remaining titles below. Keep driver
-   comparisons and cold-cache runs separate from the first RC8 regression
+   comparisons and cold-cache runs separate from the first RC9 regression
    check. Extend a promising configuration to 15 minutes for sustained
    behavior. The FPS overlay does not establish emulation speed or frame-time
    percentiles.
@@ -296,7 +311,7 @@ Capture the device identity and a startup/gameplay log if ADB is available:
 adb shell getprop ro.product.model
 adb shell getprop ro.build.fingerprint
 adb shell getprop ro.soc.model
-adb logcat -v threadtime > pocket-s-rc8.log
+adb logcat -v threadtime > pocket-s-rc9.log
 ```
 
 Start log capture before opening the app and stop it with Ctrl-C after the run.
@@ -352,6 +367,7 @@ python3 tests/xbox/vulkan/uniform-freshness-test.py --sanitize --negative-contro
 python3 tests/xbox/vulkan/texture-notification-test.py --sanitize --negative-control
 python3 tests/xbox/vulkan/surface-revival-test.py --sanitize --negative-control
 python3 tests/xbox/vulkan/image-upload-ordering-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/dynamic-state-test.py --sanitize
 python3 tests/xbox/android-startup/test-startup.py --build-dir build
 ```
 

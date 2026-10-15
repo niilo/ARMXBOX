@@ -3727,8 +3727,12 @@ static void begin_draw(PGRAPHState *pg)
 #if OPT_DYNAMIC_STATES
         if (r->extended_dynamic_state_supported) {
             uint32_t setupraster = pgraph_vk_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+            const uint32_t raster_mask = NV_PGRAPH_SETUPRASTER_CULLENABLE |
+                                         NV_PGRAPH_SETUPRASTER_CULLCTRL |
+                                         NV_PGRAPH_SETUPRASTER_FRONTFACE;
+            /* Other register bits do not change these dynamic commands. */
             if (!r->dyn_state.valid ||
-                setupraster != r->dyn_state.setupraster) {
+                ((setupraster ^ r->dyn_state.setupraster) & raster_mask)) {
                 VkCullModeFlags cull = VK_CULL_MODE_NONE;
                 if (setupraster & NV_PGRAPH_SETUPRASTER_CULLENABLE) {
                     uint32_t cull_face = GET_MASK(setupraster,
@@ -3758,8 +3762,12 @@ static void begin_draw(PGRAPHState *pg)
 
         if (r->extended_dynamic_state_supported) {
             uint32_t control_0 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_0);
+            const uint32_t depth_mask = NV_PGRAPH_CONTROL_0_ZENABLE |
+                                       NV_PGRAPH_CONTROL_0_ZWRITEENABLE |
+                                       NV_PGRAPH_CONTROL_0_ZFUNC |
+                                       NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE;
             if (!r->dyn_state.valid ||
-                control_0 != r->dyn_state.control_0) {
+                ((control_0 ^ r->dyn_state.control_0) & depth_mask)) {
                 vkCmdSetDepthTestEnable(
                     r->command_buffer,
                     (control_0 & NV_PGRAPH_CONTROL_0_ZENABLE) ? VK_TRUE
@@ -3788,9 +3796,19 @@ static void begin_draw(PGRAPHState *pg)
 
             uint32_t control_1 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_1);
             uint32_t control_2 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_2);
+            const uint32_t stencil_mask =
+                NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE |
+                NV_PGRAPH_CONTROL_1_STENCIL_FUNC |
+                NV_PGRAPH_CONTROL_1_STENCIL_REF |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_READ |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_WRITE;
+            const uint32_t stencil_op_mask =
+                NV_PGRAPH_CONTROL_2_STENCIL_OP_FAIL |
+                NV_PGRAPH_CONTROL_2_STENCIL_OP_ZFAIL |
+                NV_PGRAPH_CONTROL_2_STENCIL_OP_ZPASS;
             if (!r->dyn_state.valid ||
-                control_1 != r->dyn_state.control_1 ||
-                control_2 != r->dyn_state.control_2) {
+                ((control_1 ^ r->dyn_state.control_1) & stencil_mask) ||
+                ((control_2 ^ r->dyn_state.control_2) & stencil_op_mask)) {
                 bool stencil_test_enable =
                     control_1 & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
                 vkCmdSetStencilTestEnable(r->command_buffer,
@@ -3835,8 +3853,12 @@ static void begin_draw(PGRAPHState *pg)
             }
         } else {
             uint32_t control_1 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_1);
+            const uint32_t stencil_mask =
+                NV_PGRAPH_CONTROL_1_STENCIL_REF |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_READ |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_WRITE;
             if (!r->dyn_state.valid ||
-                control_1 != r->dyn_state.control_1) {
+                ((control_1 ^ r->dyn_state.control_1) & stencil_mask)) {
                 uint32_t stencil_ref = GET_MASK(control_1,
                                                 NV_PGRAPH_CONTROL_1_STENCIL_REF);
                 uint32_t mask_read = GET_MASK(control_1,
@@ -3857,9 +3879,17 @@ static void begin_draw(PGRAPHState *pg)
         if (r->eds3_blend_supported) {
             uint32_t blend_reg = pgraph_vk_reg_r(pg, NV_PGRAPH_BLEND);
             uint32_t ctl0 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_0);
+            const uint32_t blend_mask = NV_PGRAPH_BLEND_EN |
+                                        NV_PGRAPH_BLEND_SFACTOR |
+                                        NV_PGRAPH_BLEND_DFACTOR |
+                                        NV_PGRAPH_BLEND_EQN;
+            const uint32_t color_mask = NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE |
+                                        NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE |
+                                        NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE |
+                                        NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE;
             if (!r->dyn_state.valid ||
-                blend_reg != r->dyn_state.blend ||
-                ctl0 != r->dyn_state.color_write_control_0) {
+                ((blend_reg ^ r->dyn_state.blend) & blend_mask) ||
+                ((ctl0 ^ r->dyn_state.color_write_control_0) & color_mask)) {
                 VkBool32 blend_en =
                     (blend_reg & NV_PGRAPH_BLEND_EN) ? VK_TRUE : VK_FALSE;
                 vkCmdSetColorBlendEnableEXT(r->command_buffer, 0, 1, &blend_en);
