@@ -35,8 +35,8 @@ a finish resetting the window, plus failed captures with and without reset.
 The optional negative control compiles the original functions and admission
 block from a chosen Git revision. It must reproduce both changed vertex bytes
 at deferred submission and a draw admitted into a stale entry after capture
-resets the window. Use a revision before the fixes; `HEAD` is the default only
-for convenience while the changes are uncommitted.
+resets the window. The default is immutable pre-fix revision
+`f75153dddd03880c0c6fbfea93b2dea8ceb29af9`; use `--baseline-ref REV` to override.
 
 The fixtures test ownership decisions and byte preservation. They do not
 execute Vulkan command buffers, prove driver synchronization or establish that

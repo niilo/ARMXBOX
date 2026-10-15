@@ -32,8 +32,8 @@ they do not replace copies with an oracle that merely inspects requested sizes.
 
 The optional negative control compiles the original binder/sync/writer from
 a pre-fix Git revision. It must fail because a consumed tail byte remains
-stale in the upload buffer. Choose a revision before the correction after
-committing it; the default `HEAD` is convenient only before committing.
+stale in the upload buffer. The default is immutable pre-fix revision
+`f75153dddd03880c0c6fbfea93b2dea8ceb29af9`; use `--baseline-ref REV` to override.
 
 The sanitizer run needs address/undefined sanitizer runtimes for the chosen
 compiler. Host GCC provides those in the cloud environment; the compact

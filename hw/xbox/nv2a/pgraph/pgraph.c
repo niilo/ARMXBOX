@@ -1441,26 +1441,6 @@ static void pgraph_method_inc(MethodFunc handler, uint32_t end,
     *num_words_consumed = count;
 }
 
-static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
-{
-    if (inc) {
-        handler(METHOD_HANDLER_ARGS);
-        return;
-    }
-
-    for (size_t i = 0; i < num_words_available; i++) {
-        parameter = ldl_le_p(parameters + i);
-#if TRACE_NV2A_PGRAPH_METHOD_ENABLED
-        if (i) {
-            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method,
-                              parameter);
-        }
-#endif
-        handler(METHOD_HANDLER_ARGS);
-    }
-    *num_words_consumed = num_words_available;
-}
-
 #define METHOD_FUNC_NAME_INT(gclass, name) METHOD_FUNC_NAME(gclass, name##_int)
 #define DEF_METHOD_INT(gclass, name) DEF_METHOD(gclass, name##_int)
 #define DEF_METHOD(gclass, name) DEF_METHOD_PROTO(gclass, name)
@@ -1473,15 +1453,6 @@ static void pgraph_method_non_inc(MethodFunc handler, METHOD_HANDLER_ARG_DECL)
                           METHOD_RANGE_END_NAME(gclass, name), \
                           METHOD_HANDLER_ARGS);                \
     }                                                          \
-    DEF_METHOD_INT(gclass, name)
-
-#define DEF_METHOD_NON_INC(gclass, name)                          \
-    DEF_METHOD_INT(gclass, name);                                 \
-    DEF_METHOD(gclass, name)                                      \
-    {                                                             \
-        pgraph_method_non_inc(METHOD_FUNC_NAME_INT(gclass, name), \
-                              METHOD_HANDLER_ARGS);               \
-    }                                                             \
     DEF_METHOD_INT(gclass, name)
 
 int pgraph_method(NV2AState *d, unsigned int subchannel,
@@ -3747,7 +3718,7 @@ void pgraph_check_within_begin_end_block(PGRAPHState *pg)
     }
 }
 
-DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
+DEF_METHOD(NV097, ARRAY_ELEMENT16)
 {
     pgraph_check_within_begin_end_block(pg);
 
@@ -3755,12 +3726,37 @@ DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT16)
         pgraph_expand_draw_arrays(d);
     }
 
-    assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
-    pg->inline_elements[pg->inline_elements_length++] = parameter & 0xFFFF;
-    pg->inline_elements[pg->inline_elements_length++] = parameter >> 16;
+    size_t count = inc ? 1 : num_words_available;
+    assert(count > 0);
+    assert(pg->inline_elements_length <= NV2A_MAX_BATCH_LENGTH);
+    assert(count <= (NV2A_MAX_BATCH_LENGTH - pg->inline_elements_length) / 2);
+    uint32_t *out = &pg->inline_elements[pg->inline_elements_length];
+    if (inc) {
+        out[0] = parameter & 0xffff;
+        out[1] = parameter >> 16;
+        pg->inline_elements_length += 2;
+        return;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        uint32_t word = ldl_le_p(parameters + i);
+#if TRACE_NV2A_PGRAPH_METHOD_ENABLED
+        if (i) {
+            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, word);
+        }
+#endif
+        out[2 * i] = word & 0xffff;
+        out[2 * i + 1] = word >> 16;
+    }
+    pg->inline_elements_length += 2 * count;
+    *num_words_consumed = count;
+#if NV2A_PERF_LOG
+    g_nv2a_stats.cpu_working.array16_batches++;
+    g_nv2a_stats.cpu_working.array16_words += count;
+#endif
 }
 
-DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
+DEF_METHOD(NV097, ARRAY_ELEMENT32)
 {
     pgraph_check_within_begin_end_block(pg);
 
@@ -3768,8 +3764,32 @@ DEF_METHOD_NON_INC(NV097, ARRAY_ELEMENT32)
         pgraph_expand_draw_arrays(d);
     }
 
-    assert(pg->inline_elements_length < NV2A_MAX_BATCH_LENGTH);
-    pg->inline_elements[pg->inline_elements_length++] = parameter;
+    size_t count = inc ? 1 : num_words_available;
+    assert(count > 0);
+    assert(pg->inline_elements_length <= NV2A_MAX_BATCH_LENGTH);
+    assert(count <= NV2A_MAX_BATCH_LENGTH - pg->inline_elements_length);
+    uint32_t *out = &pg->inline_elements[pg->inline_elements_length];
+    if (inc) {
+        *out = parameter;
+        pg->inline_elements_length++;
+        return;
+    }
+
+    for (size_t i = 0; i < count; i++) {
+        uint32_t word = ldl_le_p(parameters + i);
+#if TRACE_NV2A_PGRAPH_METHOD_ENABLED
+        if (i) {
+            pgraph_method_log(subchannel, NV_KELVIN_PRIMITIVE, method, word);
+        }
+#endif
+        out[i] = word;
+    }
+    pg->inline_elements_length += count;
+    *num_words_consumed = count;
+#if NV2A_PERF_LOG
+    g_nv2a_stats.cpu_working.array32_batches++;
+    g_nv2a_stats.cpu_working.array32_words += count;
+#endif
 }
 
 DEF_METHOD(NV097, DRAW_ARRAYS)

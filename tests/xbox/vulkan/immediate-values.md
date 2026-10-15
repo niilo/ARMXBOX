@@ -41,9 +41,8 @@ are exercised separately by `primitive-cache-test.py`; this fixture holds a
 valid POINTS shader binding and extracts only SFP's uniform rejection clause.
 
 The negative control compiles the chosen pre-fix binder/setters. It must
-reproduce an immediate change escaping that rejection clause. Use a revision
-before the correction after committing it; `HEAD` is only convenient before
-committing. The fixture compiles with assertions and QEMU's
+reproduce an immediate change escaping that rejection clause. The default is immutable pre-fix revision
+`f75153dddd03880c0c6fbfea93b2dea8ceb29af9`; use `--baseline-ref REV` to override. The fixture compiles with assertions and QEMU's
 `-fno-strict-aliasing` convention for existing float method decoding.
 
 Sanitizer coverage requires the selected compiler's runtimes. Host GCC has

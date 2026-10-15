@@ -1,11 +1,47 @@
-# X1 BOX 1.2.11 Pocket S RC6
+# X1 BOX 1.2.11 Pocket S RC7
 
 This ARM64 Android candidate contains changes that can be checked without game
 files or target hardware. It is intended for the AYANEO Pocket S on Android 13.
 Actual startup, game compatibility, frame pacing and sustained performance still
 need device testing. Native Linux/Steam Deck benefits are not measured here.
 
-## RC6 vertex upload and pipeline reuse improvements
+## RC7 shader state and CPU work reductions
+
+Full RC6 SSX 3 runs settle at about 40.21 FPS at 1x and 40.59 FPS at 3x.
+The earlier upload changes reduce vertex-conflict finishes to about 0.5 per
+flip and inclusive submission time to roughly 2 ms in the primary sections.
+The common 120-second 1x comparison with RC5 is essentially unchanged at
+39.80 versus 39.98 FPS. Different scene progression, adaptive pacing and a
+hotter 3x start prevent attributing the other FPS differences to one change.
+RC6 is committed as `8aa78b9cb878c8cc9f11388ec28bad1d6a3ef086` on
+[`perf/pocket-s-performance`](https://github.com/niilo/ARMXBOX/tree/perf/pocket-s-performance).
+
+RC7 acknowledges a shader-change notification after pipeline, descriptor and
+constant consumers have used it. Previously it could remain set across
+unchanged draws, repeatedly preparing pipeline keys, uniforms and descriptors.
+The focused regression reproduces 51 preparation decisions for 51 unchanged
+draws before the fix, versus one after it. Real shader changes, clear/skipped
+draws, queued setup and fresh command buffers retain their required updates.
+These operation counts do not predict an equivalent FPS increase.
+
+Nonincrementing 16/32-bit index methods now ingest their complete payload with
+one state/capacity check and length publication. Guest word order, method
+consumption, tracing and DRAW_ARRAYS expansion remain equivalent for valid
+input. Packed 16-bit capacity checks also reject an observed overrun at the
+last slot. New `hakuX-cpu` fields `Idx16:batches/words` and
+`Idx32:batches/words` report per-flip coverage; this is a small local CPU saving
+whose actual device importance depends on the workload.
+
+Contiguous uniform arrays use one bulk copy instead of repeated small copies.
+Padded arrays retain their existing element loop and layout. This reduces
+copy setup for the vertex constant array without changing shader values.
+
+Required assertions, synchronization, existing Turnip options and driver
+workarounds remain enabled. Host regressions and the ARM64 build establish
+source behavior and packaging; RC7 gameplay FPS, sustained thermals and image
+quality need the next device run.
+
+## Vertex upload and pipeline reuse retained from RC6
 
 RC5 device logs show that sparse vertex-mirror copying works: requested copy
 work is about 0.2–0.3 MiB and 0.03 ms per flip, down from roughly 120–130 MiB
@@ -142,7 +178,7 @@ skipping QEMU's desktop config search while preserving explicit TOML settings,
 firmware, disks and game inputs. RC2 device logs confirmed successful SSX 3
 startup and gameplay with Turnip.
 
-Install RC6 over RC5 with the same package and signing certificate. Existing
+Install RC7 over RC6 with the same package and signing certificate. Existing
 test-app setup and files are retained. The production app remains separate.
 
 ## Changes retained from RC1
@@ -177,14 +213,14 @@ compatibility with all drivers or games.
 The `profile` build uses release optimization, LTO and resource shrinking, is
 profileable and non-debuggable, and is signed with the local test certificate.
 It appears as **X1 BOX Test**, package `com.izzy2lost.x1box.dev`, version
-`1.2.11-pocket-s-rc6` (code 37). It installs alongside the production app and
+`1.2.11-pocket-s-rc7` (code 38). It installs alongside the production app and
 uses separate app data. It shares its package with development/debug builds;
 updating one of those requires the same test signing certificate.
 
 Verify the supplied SHA-256, then open the APK on the device or use:
 
 ```sh
-adb install -r x1box-1.2.11-pocket-s-rc6-arm64-v8a.apk
+adb install -r x1box-1.2.11-pocket-s-rc7-arm64-v8a.apk
 ```
 
 Keep the normal app installed. Select your own firmware and games in the test
@@ -195,16 +231,16 @@ The delivery manifest records the exact APK hash and certificate fingerprint.
 
 1. Keep the same Turnip driver used for the RC2 retests. Repeat the same rider
    and downhill section in SSX 3, first at 1x and then at 3x. Continue through
-   the later section that showed vertex popping in RC5. Do not change other
-   graphics/performance options between RC5 and RC6. Warm the
+   the later section that showed vertex popping in earlier runs. Do not change other
+   graphics/performance options between RC6 and RC7. Warm the
    scene before measurement and keep power/fan/charging settings and starting
    temperature comparable.
 2. Record whether terrain/objects still flash or disappear, whether triangles
    break, and the approximate time of any issue in the captured log. Record
-   FPS alongside audio, controls and image quality. RC6 does not claim 60 FPS
+   FPS alongside audio, controls and image quality. RC7 does not claim 60 FPS
    or a measured speedup on the device.
 3. If SSX 3 is stable, check PGR2 and the remaining titles below. Keep driver
-   comparisons and cold-cache runs separate from the first RC6 regression
+   comparisons and cold-cache runs separate from the first RC7 regression
    check. Extend a promising configuration to 15 minutes for sustained
    behavior. The FPS overlay does not establish emulation speed or frame-time
    percentiles.
@@ -223,7 +259,7 @@ Capture the device identity and a startup/gameplay log if ADB is available:
 adb shell getprop ro.product.model
 adb shell getprop ro.build.fingerprint
 adb shell getprop ro.soc.model
-adb logcat -v threadtime > pocket-s-rc6.log
+adb logcat -v threadtime > pocket-s-rc7.log
 ```
 
 Start log capture before opening the app and stop it with Ctrl-C after the run.
@@ -270,6 +306,11 @@ python3 tests/xbox/vulkan/primitive-cache-test.py --negative-control
 python3 tests/xbox/vulkan/primitive-cache-test.py --sanitize
 python3 tests/xbox/vulkan/immediate-values-test.py --negative-control
 python3 tests/xbox/vulkan/immediate-values-test.py --sanitize
+python3 tests/xbox/vulkan/shader-consumption-test.py --negative-control
+python3 tests/xbox/vulkan/shader-consumption-test.py --sanitize
+python3 tests/xbox/vulkan/uniform-copy-test.py --negative-control
+python3 tests/xbox/vulkan/uniform-copy-test.py --sanitize
+python3 tests/xbox/pgraph/index-batch-test.py --sanitize
 python3 tests/xbox/android-startup/test-startup.py --build-dir build
 ```
 

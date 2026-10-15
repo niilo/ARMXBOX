@@ -3906,6 +3906,11 @@ static void begin_draw(PGRAPHState *pg)
 #if OPT_BINDLESS_TEXTURES
             push_texture_indices(pg);
 #endif
+            /*
+             * Pipeline and descriptors now consume the current shader state.
+             * Keep changes pending until this point, including queued setup.
+             */
+            r->shader_bindings_changed = false;
         }
     }
 

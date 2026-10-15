@@ -143,6 +143,10 @@ static void snapshot_cpu_timing(void)
     SMOOTH_CNT(p->method_count, w->method_count);
     SMOOTH_CNT(p->method_fast_hit, w->method_fast_hit);
     SMOOTH_CNT(p->method_noninc_words, w->method_noninc_words);
+    SMOOTH_CNT(p->array16_batches, w->array16_batches);
+    SMOOTH_CNT(p->array16_words, w->array16_words);
+    SMOOTH_CNT(p->array32_batches, w->array32_batches);
+    SMOOTH_CNT(p->array32_words, w->array32_words);
 
 #undef SMOOTH_CNT
 
@@ -174,6 +178,10 @@ static void snapshot_cpu_timing(void)
     w->method_count      = 0;
     w->method_fast_hit   = 0;
     w->method_noninc_words = 0;
+    w->array16_batches = 0;
+    w->array16_words = 0;
+    w->array32_batches = 0;
+    w->array32_words = 0;
 }
 
 static void snapshot_vsync_timing(void)
@@ -399,7 +407,8 @@ void nv2a_profile_get_cpu_timing_str(char *buf, int bufsize)
     snprintf(buf, bufsize,
              "CPU: K:%.0f W:%.1fK M:%.0f(Fh:%.0f Ni:%.0f) "
              "Lock:%.1fms Push:%.1fms "
-             "SpH:%.0f%% IdS:%.0f%% TbH:%.1f%%",
+             "SpH:%.0f%% IdS:%.0f%% TbH:%.1f%% "
+             "Idx16:%.0f/%.0f Idx32:%.0f/%.0f",
              p->kick_count,
              p->pusher_words / 1000.0f,
              p->method_count,
@@ -409,7 +418,9 @@ void nv2a_profile_get_cpu_timing_str(char *buf, int bufsize)
              p->pusher_run_ms,
              spin_pct,
              idle_pct,
-             p->tb_hit_pct);
+             p->tb_hit_pct,
+             p->array16_batches, p->array16_words,
+             p->array32_batches, p->array32_words);
 }
 
 void nv2a_profile_get_vsync_timing_str(char *buf, int bufsize)

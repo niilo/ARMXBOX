@@ -15,7 +15,8 @@ def main():
     parser.add_argument('--cc', default='cc')
     parser.add_argument('--sanitize', action='store_true')
     parser.add_argument('--negative-control', action='store_true')
-    parser.add_argument('--baseline-ref', default='HEAD')
+    parser.add_argument('--baseline-ref',
+                        default='f75153dddd03880c0c6fbfea93b2dea8ceb29af9')
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
     repo = here.parents[2]

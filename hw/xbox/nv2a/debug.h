@@ -233,6 +233,10 @@ typedef struct CpuTimingWork {
     uint32_t method_count;
     uint32_t method_fast_hit;
     uint32_t method_noninc_words;
+    uint32_t array16_batches;
+    uint32_t array16_words;
+    uint32_t array32_batches;
+    uint32_t array32_words;
     uint64_t tb_hits_snap;
     uint64_t tb_misses_snap;
 } CpuTimingWork;
@@ -251,6 +255,10 @@ typedef struct CpuTimingStats {
     float method_count;
     float method_fast_hit;
     float method_noninc_words;
+    float array16_batches;
+    float array16_words;
+    float array32_batches;
+    float array32_words;
     float tb_hit_pct;
 } CpuTimingStats;
 

@@ -4,6 +4,7 @@
 import argparse
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 
@@ -21,10 +22,28 @@ def recording_block(source):
     return source[start:end]
 
 
+def timestamp_functions(source):
+    """Extract unchanged bodies without unrelated renderer-version fields."""
+    functions = []
+    for name in ('gpu_ts_readback', 'pgraph_vk_begin_command_buffer'):
+        match = re.search(r'^(?:static )?void ' + name + r'\([^;]*?\)\s*\{',
+                          source, re.MULTILINE)
+        if match is None:
+            raise ValueError('Missing production function: ' + name)
+        depth = 1
+        end = match.end()
+        while depth:
+            depth += (source[end] == '{') - (source[end] == '}')
+            end += 1
+        functions.append(source[match.start():end])
+    return '#include "renderer.h"\n\n' + '\n\n'.join(functions) + '\n'
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--build-dir', type=Path)
-    parser.add_argument('--baseline-ref', default='HEAD')
+    parser.add_argument('--baseline-ref',
+                        default='f75153dddd03880c0c6fbfea93b2dea8ceb29af9')
     parser.add_argument('--thinlto', action='store_true')
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[3]
@@ -57,12 +76,14 @@ def main():
     for label, draw in [('candidate', source), ('original', original)]:
         dest = out / label
         dest.mkdir(exist_ok=True)
+        extracted = dest / 'gpu-timestamps-functions.h'
+        extracted.write_text(timestamp_functions(draw.read_text()))
         (dest / 'gpu-timestamps-recording.h').write_text(
             'static void gpu_timestamps_recording_complete(PGRAPHVkState *r)\n'
             '{\n' + recording_block(draw.read_text()) + '\n}\n')
         obj = dest / 'test.o'
         command = flags + lto + ['-I' + str(dest),
-                  '-DGPU_TIMESTAMPS_DRAW_SOURCE="' + str(draw) + '"',
+                  '-DGPU_TIMESTAMPS_DRAW_SOURCE="' + str(extracted) + '"',
                   '-c', str(fixture), '-o', str(obj)]
         with (dest / 'compile.log').open('w') as log:
             subprocess.run(command, cwd=entry['directory'], stdout=log,

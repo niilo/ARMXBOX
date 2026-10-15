@@ -10,9 +10,9 @@ python3 tests/xbox/vulkan/vertex-propagation-test.py --negative-control
 python3 tests/xbox/vulkan/vertex-propagation-test.py --negative-control --sanitize
 ```
 
-The optional original-source negative control uses `HEAD` by default while the
-patch is uncommitted. After committing, select a revision before the fix with
-`--baseline-ref f75153dddd03880c0c6fbfea93b2dea8ceb29af9`.
+The optional original-source negative control defaults to the immutable
+pre-fix revision `f75153dddd03880c0c6fbfea93b2dea8ceb29af9`. Use
+`--baseline-ref REV` to select a different pre-fix revision.
 `--sanitize` requires the selected compiler's address/undefined runtimes.
 Outputs and extracted functions stay in `build/cloud-vulkan/propagation` unless
 `--output-dir` is provided. This standalone test is outside the Meson suite.

@@ -31,9 +31,8 @@ flag; unchanged values and changed nonuniform latches must keep it clear.
 
 The optional negative control extracts the original binder from the selected
 pre-fix Git revision. It must fail because cached inline values differ from
-the forced-cold path after guest RAM changes. Choose a revision before the
-fix after committing it; `HEAD` is only the default for convenience while
-the changes are uncommitted.
+the forced-cold path after guest RAM changes. The default is immutable pre-fix revision
+`f75153dddd03880c0c6fbfea93b2dea8ceb29af9`; use `--baseline-ref REV` to override.
 
 `--sanitize` requires address/undefined sanitizer runtimes for the selected
 compiler. The compact cloud image lacks Clang's sanitizer static archives;

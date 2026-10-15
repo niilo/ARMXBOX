@@ -133,6 +133,15 @@ static inline void uniform_copy(ShaderUniformLayout *layout, int idx,
     char *p_max = p_out + layout->total_size;
     char *p_in = (char *)values;
 
+    if (bytes_remaining && u->stride == element_size) {
+        assert(u->dim_v && count % u->dim_v == 0);
+        assert(count / u->dim_v <= u->dim_a);
+        assert(u->offset <= layout->total_size);
+        assert(bytes_remaining <= layout->total_size - u->offset);
+        memcpy(p_out, p_in, bytes_remaining);
+        return;
+    }
+
     int index = 0;
     while (bytes_remaining) {
         assert((p_out + element_size) <= p_max);

@@ -7,9 +7,11 @@ python3 tests/xbox/vulkan/gpu-timestamps-test.py --build-dir build
 python3 tests/xbox/vulkan/gpu-timestamps-test.py --build-dir build --thinlto
 ```
 
-The runner uses `draw.c` compile flags from `compile_commands.json`, includes
-the real production translation unit, and links only exercised sections. It
-executes the actual `gpu_ts_readback` and `pgraph_vk_begin_command_buffer`.
+The runner uses `draw.c` compile flags from `compile_commands.json` and the
+real renderer headers. It extracts and executes the unchanged bodies of
+`gpu_ts_readback` and `pgraph_vk_begin_command_buffer`. This permits comparison
+with the pre-fix revision without compiling unrelated old functions against
+renderer fields that have since changed.
 It also extracts and executes the actual end-recording timestamp block from
 `pgraph_vk_finish`. Four deterministic Vulkan entry points substitute query
 results and command-recording calls. No GPU, game or firmware is required.
@@ -30,8 +32,9 @@ It does not execute full submission/rotation/fence paths or validate a driver.
 Their ordering is represented by the regression calls around the actual
 accounting code; existing Vulkan synchronization remains unchanged.
 
-The runner also builds the pre-fix `draw.c` from `HEAD` as a negative control.
-It must fail the first test with 12,000 ns where 6,000 ns was expected. After
-committing the fix, supply a pre-fix revision with `--baseline-ref REV`.
+The runner also builds pre-fix `draw.c` from immutable revision
+`f75153dddd03880c0c6fbfea93b2dea8ceb29af9` as a negative control. It must fail
+the first test with 12,000 ns where 6,000 ns was expected. Use
+`--baseline-ref REV` to select a different pre-fix revision.
 Expected failures have core dumps disabled. Generated sources, binaries and
 logs remain under the ignored `build/cloud-vulkan/gpu-timestamps` directory.

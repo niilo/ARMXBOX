@@ -41,7 +41,7 @@ Coverage:
   including when descriptors are unavailable for MFP; clean state skips it.
   That call is stubbed, so this test verifies control flow and arguments, not
   the complete shader uniform serializer or GPU upload.
-- `--negative-control` compiles the original HEAD guard expressions and dirty
+- `--negative-control` compiles the original pre-fix guard expressions and dirty
   checker. They reject 21 of 30 valid builder matches per guard, or 126 of 180
   total. A compile failure cannot count as the negative control succeeding.
 

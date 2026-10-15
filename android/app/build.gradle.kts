@@ -61,7 +61,7 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 37
+    versionCode = 38
     versionName = "1.2.11"
 
     ndk {
@@ -125,7 +125,7 @@ android {
       initWith(getByName("release"))
       // Keep the locally signed test build alongside the production app.
       applicationIdSuffix = ".dev"
-      versionNameSuffix = "-pocket-s-rc6"
+      versionNameSuffix = "-pocket-s-rc7"
       isDebuggable = false
       isProfileable = true
       signingConfig = signingConfigs.getByName("debug")

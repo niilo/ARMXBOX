@@ -49,8 +49,9 @@ def main():
     parser.add_argument('--cc', default='cc')
     parser.add_argument('--sanitize', action='store_true')
     parser.add_argument('--negative-control', action='store_true',
-                        help='also require the original HEAD source to fail')
-    parser.add_argument('--baseline-ref', default='HEAD',
+                        help='require the selected baseline source to fail')
+    parser.add_argument('--baseline-ref',
+                        default='f75153dddd03880c0c6fbfea93b2dea8ceb29af9',
                         help='Git revision for the optional negative control')
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[3]

@@ -49,9 +49,8 @@ There are eight scenarios in the compile-disabled variant and fifteen in the
 compile-enabled variant, with multiple assertions and state mutations per
 scenario. The optional negative control extracts the original cached branch
 and descriptor constructor from the chosen Git revision. It must reproduce
-stale per-unit descriptor inputs in both builds. Select a pre-fix revision
-after committing the change; `HEAD` is only a convenience default while the
-fix remains uncommitted.
+stale per-unit descriptor inputs in both builds. The default is immutable pre-fix revision
+`f75153dddd03880c0c6fbfea93b2dea8ceb29af9`; use `--baseline-ref REV` to override.
 
 These fixtures verify source state transitions and API inputs. They do not run
 Vulkan, validate a real driver's synchronization, replay the full draw pipeline

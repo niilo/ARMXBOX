@@ -35,7 +35,8 @@ def main():
     parser.add_argument('--sanitize', action='store_true')
     parser.add_argument('--benchmark', action='store_true')
     parser.add_argument('--negative-control', action='store_true')
-    parser.add_argument('--baseline-ref', default='HEAD')
+    parser.add_argument('--baseline-ref',
+                        default='f75153dddd03880c0c6fbfea93b2dea8ceb29af9')
     parser.add_argument('--output-dir', type=Path)
     args = parser.parse_args()
     here = Path(__file__).resolve().parent

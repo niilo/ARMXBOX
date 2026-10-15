@@ -56,6 +56,12 @@ typedef struct PGRAPHVkState {
     bool texture_bindings_changed;
     bool framebuffer_dirty, in_command_buffer, in_render_pass;
     bool bindless_textures_supported, push_descriptors_supported;
+#ifdef SHADER_CONSUMPTION_TEST
+    bool pre_draw_skipped, bindless_set_bound;
+    bool push_tex_dirty;
+    bool color_drawn_in_cb, zeta_drawn_in_cb, queries_reset_in_cb;
+    unsigned command_buffer;
+#endif
     int framebuffer_index, ubo_descriptor_set_index;
     int push_ubo_set_index, descriptor_set_index;
     unsigned texture_vram_gen, last_texture_vram_gen;
