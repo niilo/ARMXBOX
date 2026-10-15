@@ -2,56 +2,115 @@ name: Release (Dispatched)
 
 on:
   workflow_dispatch:
+    inputs:
+      version_name:
+        description: Android versionName (empty increments the current patch)
+        type: string
+        default: ''
+      version_code:
+        description: Android versionCode (empty increments the current value)
+        type: string
+        default: ''
+      dry_run:
+        description: Preview versions without changing files, tags, or releases
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: android-release-versioning
   cancel-in-progress: false
 
 jobs:
   tag:
-    name: Create release tag
+    name: Prepare Android version and release tag
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
-      tag: ${{ steps.semver.outputs.next }}
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.publish.outputs.commit }}
     steps:
+    - name: Check release branch
+      env:
+        RELEASE_REF: ${{ github.ref }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        if [[ "$RELEASE_REF" != refs/heads/* ]]; then
+          echo 'Select a branch to prepare a release.' >&2
+          exit 1
+        fi
+        if [ "$DRY_RUN" != true ] && [ "$RELEASE_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+          echo 'Create stable releases from the default branch; use dry_run to preview another branch.' >&2
+          exit 1
+        fi
+    - name: Check signing secrets
+      if: ${{ !inputs.dry_run }}
+      env:
+        HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        HAS_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD != '' }}
+        HAS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS != '' }}
+        HAS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD != '' }}
+      run: |
+        for configured in "$HAS_KEYSTORE" "$HAS_STORE_PASSWORD" "$HAS_ALIAS" "$HAS_KEY_PASSWORD"; do
+          if [ "$configured" != true ]; then
+            echo 'Configure all four Android signing secrets before creating a release.' >&2
+            exit 1
+          fi
+        done
     - name: Clone tree
       uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
-    - name: Determine new tag version
-      id: semver
-      run: |
-        latest=$(
-          git ls-remote --tags --refs "https://github.com/${GITHUB_REPOSITORY}.git" 'v[0-9]*.[0-9]*.[0-9]*' |
-          awk '{print $2}' | sed 's#refs/tags/##' | sort -V | tail -n 1
-        )
-        [ -z "$latest" ] && latest="v0.0.0"
-        ver="${latest#v}"
-        IFS=. read -r major minor patch <<< "$ver"
-        next="v${major}.${minor}.$((patch+1))"
-        echo "next=$next" >> "$GITHUB_OUTPUT"
-    - name: Push new tag
+      with:
+        fetch-depth: 0
+    - name: Prepare Android version
+      id: version
       env:
-        RELEASE_TAG: ${{ steps.semver.outputs.next }}
+        VERSION_NAME: ${{ inputs.version_name }}
+        VERSION_CODE: ${{ inputs.version_code }}
+        DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        args=(prepare --version-name "$VERSION_NAME" --version-code "$VERSION_CODE")
+        if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+        python3 .github/scripts/android-release.py "${args[@]}" --github-output "$GITHUB_OUTPUT"
+    - name: Show release plan
+      env:
+        VERSION_NAME: ${{ steps.version.outputs.version_name }}
+        VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        {
+          echo "Android versionName: $VERSION_NAME"
+          echo "Android versionCode: $VERSION_CODE"
+          echo "Git tag: $RELEASE_TAG"
+          echo "Preview only: $DRY_RUN"
+        } >> "$GITHUB_STEP_SUMMARY"
+    - name: Commit versions and push tag together
+      id: publish
+      if: ${{ !inputs.dry_run }}
+      env:
+        RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        RELEASE_REF: ${{ github.ref }}
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG"
-        git push origin "$RELEASE_TAG"
+        python3 .github/scripts/android-release.py publish \
+          --branch "$RELEASE_REF" --tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
 
   release:
     name: Release
     needs: tag
+    if: ${{ !inputs.dry_run }}
     permissions:
       contents: write
       issues: read
       pull-requests: read
     uses: ./.github/workflows/release.yml
     with:
-      ref: ${{ needs.tag.outputs.tag }}
+      ref: ${{ needs.tag.outputs.commit }}
       tag: ${{ needs.tag.outputs.tag }}
     secrets:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

@@ -30,8 +30,23 @@ permissions:
   contents: read
 
 jobs:
+  validate:
+    name: Validate Android release version
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      with:
+        ref: ${{ inputs.ref }}
+        persist-credentials: false
+    - name: Check tag matches the Android version
+      if: ${{ !inputs.pre-release }}
+      env:
+        RELEASE_TAG: ${{ inputs.tag }}
+      run: python3 .github/scripts/android-release.py check-tag "$RELEASE_TAG"
+
   build:
     name: Build
+    needs: validate
     uses: ./.github/workflows/build.yml
     with:
       ref: ${{ inputs.ref }}

@@ -17,6 +17,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  release-versioning:
+    name: Check Android release versioning
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v4
+      with:
+        persist-credentials: false
+    - run: python3 .github/scripts/test-android-release.py
+
   build:
     name: Build
     uses: ./.github/workflows/build.yml

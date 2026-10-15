@@ -20,11 +20,46 @@ provide an SDL3 runtime package; macOS bundles it in the app.
 ## Releases and images
 
 Publishing is intentional: `Pre-release` is manually dispatched, `Release
-(Dispatched)` increments the highest `vX.Y.Z` tag and creates a draft, and
-pushing a `v*` tag also creates a draft. Standard releases include desktop
+(Dispatched)` updates the Android version and creates a matching tag and draft,
+and pushing a matching `v*` tag also creates a draft. Standard releases include desktop
 packages, source, and signed Android release APKs and AABs built on Linux and
 macOS. `Pre-release` continues to include Android debug APKs. Review a draft
 before publishing it; an AAB is uploaded to Google Play separately.
+
+### Create a versioned release
+
+Open **Actions → Release (Dispatched) → Run workflow**, select `master`, and:
+
+- Leave `version_name` and `version_code` empty to increment the current
+  Android patch version and build number. From `1.2.9` / `30`, the next release
+  becomes `versionName = "1.2.10"`, `versionCode = 31`, and Git tag `v1.2.10`.
+- Enter explicit values for another release, such as `1.3.0` and `40`. Both
+  values must increase; `version_name` must use `X.Y.Z`.
+- Enable `dry_run` to preview the next values without committing, tagging,
+  building, or creating a release. Preview runs may use a test branch.
+- Run with `dry_run` disabled to commit both fields in
+  `android/app/build.gradle.kts` on the default branch and push that commit and
+  its annotated tag in one atomic operation. The tag message records
+  `versionCode`; its name matches the user-facing `versionName`.
+
+The release builds that exact version commit and creates a **draft** containing
+signed APKs/AABs and desktop packages. Review the draft under **Releases** and
+click **Publish release** when ready. Existing tags, decreasing versions,
+missing signing secrets, and rejected branch updates stop the operation.
+
+For a manual release instead, edit both Android version fields, commit them,
+then push `v<versionName>` pointing to that commit. The release workflow checks
+that the tag matches `versionName` before building. Do not run the automatic
+version bump as well if you already prepared the version manually.
+
+The workflow calls the release build directly because pushes made with
+[`GITHUB_TOKEN`](https://docs.github.com/en/actions/concepts/security/github_token)
+do not trigger another push workflow. No additional token or broader default
+workflow permissions are needed. Run the release helper's local integration
+tests with `python3 .github/scripts/test-android-release.py`; CI runs them too.
+Android's [versioning documentation](https://developer.android.com/studio/publish/versioning)
+explains the separate build number (`versionCode`) and display version
+(`versionName`).
 
 ### Android release signing
 
@@ -61,9 +96,9 @@ for the explicit forwarding used here.
 
 To test signing without creating a tag or release, run `Build for Android`
 manually with `variant=Release`. Artifacts contain
-`x1box-android-release-<host>.apk` and `.aab`. Update `versionCode` and
-`versionName` in `android/app/build.gradle.kts` before a new app version;
-GitHub release tags do not change these values.
+`x1box-android-release-<host>.apk` and `.aab`. This build-only workflow uses the
+versions already committed in `android/app/build.gradle.kts`; it does not bump
+versions or create a tag. Use `Release (Dispatched)` for the coordinated bump.
 
 `Build xemu-win64-toolchain` validates changed Dockerfiles. To publish,
 dispatch it with `publish=true`; images go to
