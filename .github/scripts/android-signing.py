@@ -67,6 +67,16 @@ def prepare():
         raise ValueError("Cannot open the signing key; check the keystore, alias and passwords")
     digest = hashlib.sha256(certificate.stdout).hexdigest()
     (directory / "certificate.sha256").write_text(digest + "\n")
+    certificate_file = directory / "certificate.der"
+    certificate_file.write_bytes(certificate.stdout)
+    # Trust only this public certificate for strict JAR verification. This
+    # store contains no private key; its fixed password is not a credential.
+    trusted = run(["keytool", "-importcert", "-noprompt", "-alias", "release",
+                   "-file", str(certificate_file), "-keystore",
+                   str(directory / "verification.p12"), "-storetype", "PKCS12",
+                   "-storepass", "x1box-verification"])
+    if trusted.returncode:
+        raise ValueError("Cannot prepare the release certificate verification store")
 
     values = {"storeFile": str(keystore), "storePassword": os.environ[names[1]],
               "keyAlias": os.environ[names[2]], "keyPassword": os.environ[names[3]]}
@@ -87,10 +97,10 @@ def verify(apk, aab):
     if result.returncode or not match or match[1].decode().lower() != expected:
         raise ValueError("APK signature verification failed or the signing certificate differs")
 
-    result = run(["jarsigner", "-verify", "-strict", str(aab)])
-    # Android signing certificates are normally self-signed (strict exit code 4).
-    # The exact certificate is pinned below; unsigned entries (16) still fail.
-    if result.returncode not in (0, 4):
+    result = run(["jarsigner", "-verify", "-strict", "-keystore",
+                  str(signing_dir() / "verification.p12"), "-storepass",
+                  "x1box-verification", str(aab), "release"])
+    if result.returncode:
         raise ValueError("AAB signature verification failed")
     certificate = run(["keytool", "-printcert", "-jarfile", str(aab), "-rfc"])
     match = re.search(rb"-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----",
