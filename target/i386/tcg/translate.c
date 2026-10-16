@@ -41,6 +41,10 @@
 
 static int g_use_fp_jit;
 
+#ifndef XEMU_OPT_X87_STACK
+#define XEMU_OPT_X87_STACK 0
+#endif
+
 #if defined(XBOX)
 struct FPUProfileCounters {
     int x87_arith;
@@ -1951,8 +1955,41 @@ static void gen_flush_fp(DisasContext *s)
             return; \
         }} while(0)
 
+static bool use_raw_x87_stack(void)
+{
+#if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_X87_STACK
+    return !g_use_fp_jit;
+#else
+    return false;
+#endif
+}
+
+/* Copy the complete object, including padding, without FP conversion. */
+static void gen_x87_raw_move(TCGv_ptr dst, TCGv_ptr src)
+{
+    TCGv_i64 lo = tcg_temp_new_i64();
+    TCGv_i64 hi = tcg_temp_new_i64();
+
+#if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_X87_STACK
+    QEMU_BUILD_BUG_ON(sizeof(floatx80) != 16);
+    QEMU_BUILD_BUG_ON(sizeof(FPReg) != 16);
+#endif
+    tcg_gen_ld_i64(lo, src, 0);
+    tcg_gen_ld_i64(hi, src, 8);
+    tcg_gen_st_i64(lo, dst, 0);
+    tcg_gen_st_i64(hi, dst, 8);
+}
+
 static void gen_fpush(DisasContext *s)
 {
+    if (use_raw_x87_stack()) {
+        /* Preserve the state flush performed before the former helper call. */
+        gen_flush_fp(s);
+        tcg_gen_subi_i32(fpstt, fpstt, 1);
+        tcg_gen_andi_i32(fpstt, fpstt, 7);
+        gen_set_fptag(0, 0);
+        return;
+    }
     GEN_HELPER_FALLBACK_v_v(fpush, BISECT_GRP_STACK);
 
     tcg_gen_subi_i32(fpstt, fpstt, 1);
@@ -1964,6 +2001,13 @@ static void gen_fpush(DisasContext *s)
 
 static void gen_fpop(DisasContext *s)
 {
+    if (use_raw_x87_stack()) {
+        gen_flush_fp(s);
+        gen_set_fptag(0, 1);
+        tcg_gen_addi_i32(fpstt, fpstt, 1);
+        tcg_gen_andi_i32(fpstt, fpstt, 7);
+        return;
+    }
     GEN_HELPER_FALLBACK_v_v(fpop, BISECT_GRP_STACK);
 
     gen_set_fptag(0, 1); /* invalidate stack entry */
@@ -1976,24 +2020,60 @@ static void gen_fpop(DisasContext *s)
 
 static void gen_fmov_FT0_STN(DisasContext *s, int st_index)
 {
+    if (use_raw_x87_stack()) {
+        gen_flush_fp(s);
+        gen_x87_raw_move(gen_ft0_ptr(), gen_stn_ptr(st_index));
+        return;
+    }
     GEN_HELPER_FALLBACK_v_i(fmov_FT0_STN, st_index, BISECT_GRP_STACK);
     fp_pc_wrapper(gen_fmov_FT0_STN)(s, st_index);
 }
 
 static void gen_fmov_ST0_STN(DisasContext *s, int st_index)
 {
+    if (use_raw_x87_stack()) {
+        gen_flush_fp(s);
+        gen_x87_raw_move(gen_stn_ptr(0), gen_stn_ptr(st_index));
+        return;
+    }
     GEN_HELPER_FALLBACK_v_i(fmov_ST0_STN, st_index, BISECT_GRP_STACK);
     fp_pc_wrapper(gen_fmov_ST0_STN)(s, st_index);
 }
 
 static void gen_fmov_STN_ST0(DisasContext *s, int st_index)
 {
+    if (use_raw_x87_stack()) {
+        gen_flush_fp(s);
+        gen_x87_raw_move(gen_stn_ptr(st_index), gen_stn_ptr(0));
+        return;
+    }
     GEN_HELPER_FALLBACK_v_i(fmov_STN_ST0, st_index, BISECT_GRP_STACK);
     fp_pc_wrapper(gen_fmov_STN_ST0)(s, st_index);
 }
 
 static void gen_fxchg_ST0_STN(DisasContext *s, int st_index)
 {
+    if (use_raw_x87_stack()) {
+        TCGv_ptr a, b;
+        TCGv_i64 a_lo = tcg_temp_new_i64();
+        TCGv_i64 a_hi = tcg_temp_new_i64();
+        TCGv_i64 b_lo = tcg_temp_new_i64();
+        TCGv_i64 b_hi = tcg_temp_new_i64();
+
+        gen_flush_fp(s);
+        a = gen_stn_ptr(0);
+        b = gen_stn_ptr(st_index);
+        /* Read both complete objects before storing, including ST(0) alias. */
+        tcg_gen_ld_i64(a_lo, a, 0);
+        tcg_gen_ld_i64(a_hi, a, 8);
+        tcg_gen_ld_i64(b_lo, b, 0);
+        tcg_gen_ld_i64(b_hi, b, 8);
+        tcg_gen_st_i64(a_lo, b, 0);
+        tcg_gen_st_i64(a_hi, b, 8);
+        tcg_gen_st_i64(b_lo, a, 0);
+        tcg_gen_st_i64(b_hi, a, 8);
+        return;
+    }
     GEN_HELPER_FALLBACK_v_i(fxchg_ST0_STN, st_index, BISECT_GRP_STACK);
 
     /* Ensure ST0, STN are loaded */

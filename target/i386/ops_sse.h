@@ -21,6 +21,7 @@
 #include "crypto/aes.h"
 #include "crypto/aes-round.h"
 #include "crypto/clmul.h"
+#include "tcg/fpu-profile.h"
 
 /*
  * ARM64 native float helpers for SSE operations.
@@ -615,6 +616,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     void glue(helper_ ## name ## ps, SUFFIX)(CPUX86State *env,          \
             Reg *d, Reg *v, Reg *s)                                     \
     {                                                                   \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);                      \
         int i;                                                          \
         for (i = 0; i < 2 << SHIFT; i++) {                              \
             d->ZMM_S(i) = F(32, v->ZMM_S(i), s->ZMM_S(i));              \
@@ -624,6 +626,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
     void glue(helper_ ## name ## pd, SUFFIX)(CPUX86State *env,          \
             Reg *d, Reg *v, Reg *s)                                     \
     {                                                                   \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);                      \
         int i;                                                          \
         for (i = 0; i < 1 << SHIFT; i++) {                              \
             d->ZMM_D(i) = F(64, v->ZMM_D(i), s->ZMM_D(i));              \
@@ -637,6 +640,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
                                                                         \
     void helper_ ## name ## ss(CPUX86State *env, Reg *d, Reg *v, Reg *s)\
     {                                                                   \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);                      \
         int i;                                                          \
         d->ZMM_S(0) = F(32, v->ZMM_S(0), s->ZMM_S(0));                  \
         for (i = 1; i < 2 << SHIFT; i++) {                              \
@@ -646,6 +650,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
                                                                         \
     void helper_ ## name ## sd(CPUX86State *env, Reg *d, Reg *v, Reg *s)\
     {                                                                   \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);                      \
         int i;                                                          \
         d->ZMM_D(0) = F(64, v->ZMM_D(0), s->ZMM_D(0));                  \
         for (i = 1; i < 1 << SHIFT; i++) {                              \
@@ -697,6 +702,7 @@ void glue(helper_pshufhw, SUFFIX)(Reg *d, Reg *s, int order)
 
 void glue(helper_addps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     vst1q_f32((float *)&d->ZMM_S(0), vaddq_f32(va, vs));
@@ -704,6 +710,7 @@ void glue(helper_addps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_addpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t va = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     vst1q_f64((double *)&d->ZMM_D(0), vaddq_f64(va, vs));
@@ -711,6 +718,7 @@ void glue(helper_addpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_addss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_S(0) = FPU_ADD(32, v->ZMM_S(0), s->ZMM_S(0));
     for (int i = 1; i < 4; i++) {
         d->ZMM_L(i) = v->ZMM_L(i);
@@ -719,12 +727,14 @@ void helper_addss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_addsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_D(0) = FPU_ADD(64, v->ZMM_D(0), s->ZMM_D(0));
     d->ZMM_Q(1) = v->ZMM_Q(1);
 }
 
 void glue(helper_subps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     vst1q_f32((float *)&d->ZMM_S(0), vsubq_f32(va, vs));
@@ -732,6 +742,7 @@ void glue(helper_subps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_subpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t va = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     vst1q_f64((double *)&d->ZMM_D(0), vsubq_f64(va, vs));
@@ -739,6 +750,7 @@ void glue(helper_subpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_subss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_S(0) = FPU_SUB(32, v->ZMM_S(0), s->ZMM_S(0));
     for (int i = 1; i < 4; i++) {
         d->ZMM_L(i) = v->ZMM_L(i);
@@ -747,12 +759,14 @@ void helper_subss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_subsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_D(0) = FPU_SUB(64, v->ZMM_D(0), s->ZMM_D(0));
     d->ZMM_Q(1) = v->ZMM_Q(1);
 }
 
 void glue(helper_mulps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     vst1q_f32((float *)&d->ZMM_S(0), vmulq_f32(va, vs));
@@ -760,6 +774,7 @@ void glue(helper_mulps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_mulpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t va = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     vst1q_f64((double *)&d->ZMM_D(0), vmulq_f64(va, vs));
@@ -767,6 +782,7 @@ void glue(helper_mulpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_mulss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_S(0) = FPU_MUL(32, v->ZMM_S(0), s->ZMM_S(0));
     for (int i = 1; i < 4; i++) {
         d->ZMM_L(i) = v->ZMM_L(i);
@@ -775,12 +791,14 @@ void helper_mulss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_mulsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_D(0) = FPU_MUL(64, v->ZMM_D(0), s->ZMM_D(0));
     d->ZMM_Q(1) = v->ZMM_Q(1);
 }
 
 void glue(helper_divps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     vst1q_f32((float *)&d->ZMM_S(0), vdivq_f32(va, vs));
@@ -788,6 +806,7 @@ void glue(helper_divps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_divpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t va = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     vst1q_f64((double *)&d->ZMM_D(0), vdivq_f64(va, vs));
@@ -795,6 +814,7 @@ void glue(helper_divpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_divss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_S(0) = FPU_DIV(32, v->ZMM_S(0), s->ZMM_S(0));
     for (int i = 1; i < 4; i++) {
         d->ZMM_L(i) = v->ZMM_L(i);
@@ -803,12 +823,14 @@ void helper_divss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_divsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_D(0) = FPU_DIV(64, v->ZMM_D(0), s->ZMM_D(0));
     d->ZMM_Q(1) = v->ZMM_Q(1);
 }
 
 void glue(helper_minps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     vst1q_f32((float *)&d->ZMM_S(0), vminq_f32(va, vs));
@@ -816,6 +838,7 @@ void glue(helper_minps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_minpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t va = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     vst1q_f64((double *)&d->ZMM_D(0), vminq_f64(va, vs));
@@ -823,6 +846,7 @@ void glue(helper_minpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_minss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_S(0) = FPU_MIN(32, v->ZMM_S(0), s->ZMM_S(0));
     for (int i = 1; i < 4; i++) {
         d->ZMM_L(i) = v->ZMM_L(i);
@@ -831,12 +855,14 @@ void helper_minss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_minsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_D(0) = FPU_MIN(64, v->ZMM_D(0), s->ZMM_D(0));
     d->ZMM_Q(1) = v->ZMM_Q(1);
 }
 
 void glue(helper_maxps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     vst1q_f32((float *)&d->ZMM_S(0), vmaxq_f32(va, vs));
@@ -844,6 +870,7 @@ void glue(helper_maxps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_maxpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t va = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     vst1q_f64((double *)&d->ZMM_D(0), vmaxq_f64(va, vs));
@@ -851,6 +878,7 @@ void glue(helper_maxpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_maxss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_S(0) = FPU_MAX(32, v->ZMM_S(0), s->ZMM_S(0));
     for (int i = 1; i < 4; i++) {
         d->ZMM_L(i) = v->ZMM_L(i);
@@ -859,6 +887,7 @@ void helper_maxss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_maxsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     d->ZMM_D(0) = FPU_MAX(64, v->ZMM_D(0), s->ZMM_D(0));
     d->ZMM_Q(1) = v->ZMM_Q(1);
 }
@@ -875,18 +904,21 @@ SSE_HELPER_S(max, FPU_MAX)
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT && SHIFT == 1
 void glue(helper_sqrtps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     vst1q_f32((float *)&d->ZMM_S(0), vsqrtq_f32(vs));
 }
 
 void glue(helper_sqrtpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     vst1q_f64((double *)&d->ZMM_D(0), vsqrtq_f64(vs));
 }
 #else
 void glue(helper_sqrtps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int i;
     for (i = 0; i < 2 << SHIFT; i++) {
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
@@ -899,6 +931,7 @@ void glue(helper_sqrtps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 
 void glue(helper_sqrtpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int i;
     for (i = 0; i < 1 << SHIFT; i++) {
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
@@ -913,6 +946,7 @@ void glue(helper_sqrtpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 #if SHIFT == 1
 void helper_sqrtss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     int i;
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     d->ZMM_S(0) = float32_sqrt_native(s->ZMM_S(0));
@@ -926,6 +960,7 @@ void helper_sqrtss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_sqrtsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     int i;
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     d->ZMM_D(0) = float64_sqrt_native(s->ZMM_D(0));
@@ -942,6 +977,7 @@ void helper_sqrtsd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT && SHIFT == 1
 void glue(helper_cvtps2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     float32x2_t lo = vld1_f32((const float *)&s->ZMM_S(0));
     float64x2_t hi_d = vcvt_f64_f32(vget_high_f32(vld1q_f32((const float *)&s->ZMM_S(0))));
     float64x2_t lo_d = vcvt_f64_f32(lo);
@@ -950,6 +986,7 @@ void glue(helper_cvtps2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 
 void glue(helper_cvtpd2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     float64x2_t vd = vld1q_f64((const double *)&s->ZMM_D(0));
     float32x2_t vs = vcvt_f32_f64(vd);
     vst1_f32((float *)&d->ZMM_S(0), vs);
@@ -958,6 +995,7 @@ void glue(helper_cvtpd2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 #else
 void glue(helper_cvtps2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 1 << SHIFT; --i >= 0; ) {
         d->ZMM_D(i) = float32_to_float64(s->ZMM_S(i), &env->sse_status);
@@ -966,6 +1004,7 @@ void glue(helper_cvtps2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 
 void glue(helper_cvtpd2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 0; i < 1 << SHIFT; i++) {
          d->ZMM_S(i) = float64_to_float32(s->ZMM_D(i), &env->sse_status);
@@ -979,6 +1018,7 @@ void glue(helper_cvtpd2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 #if SHIFT >= 1
 void glue(helper_cvtph2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
 
     for (i = 2 << SHIFT; --i >= 0; ) {
@@ -988,6 +1028,7 @@ void glue(helper_cvtph2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 
 void glue(helper_cvtps2ph, SUFFIX)(CPUX86State *env, Reg *d, Reg *s, int mode)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     FloatRoundMode prev_rounding_mode = env->sse_status.float_rounding_mode;
     if (!(mode & (1 << 2))) {
@@ -1008,6 +1049,7 @@ void glue(helper_cvtps2ph, SUFFIX)(CPUX86State *env, Reg *d, Reg *s, int mode)
 #if SHIFT == 1
 void helper_cvtss2sd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float f;
@@ -1024,6 +1066,7 @@ void helper_cvtss2sd(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void helper_cvtsd2ss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     double dd;
@@ -1043,6 +1086,7 @@ void helper_cvtsd2ss(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT && SHIFT == 1
 void glue(helper_cvtdq2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int32x4_t vi = vld1q_s32((const int32_t *)&s->ZMM_L(0));
     float32x4_t vf = vcvtq_f32_s32(vi);
     vst1q_f32((float *)&d->ZMM_S(0), vf);
@@ -1050,6 +1094,7 @@ void glue(helper_cvtdq2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 
 void glue(helper_cvtdq2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int32_t i0 = s->ZMM_L(0);
     int32_t i1 = s->ZMM_L(1);
     double d0 = (double)i0;
@@ -1060,6 +1105,7 @@ void glue(helper_cvtdq2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 #else
 void glue(helper_cvtdq2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 0; i < 2 << SHIFT; i++) {
         d->ZMM_S(i) = int32_to_float32(s->ZMM_L(i), &env->sse_status);
@@ -1068,6 +1114,7 @@ void glue(helper_cvtdq2ps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 
 void glue(helper_cvtdq2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 1 << SHIFT; --i >= 0; ) {
         int32_t l = s->ZMM_L(i);
@@ -1079,6 +1126,7 @@ void glue(helper_cvtdq2pd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 #if SHIFT == 1
 void helper_cvtpi2ps(CPUX86State *env, ZMMReg *d, MMXReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float f0 = (float)(int32_t)s->MMX_L(0);
     float f1 = (float)(int32_t)s->MMX_L(1);
@@ -1092,6 +1140,7 @@ void helper_cvtpi2ps(CPUX86State *env, ZMMReg *d, MMXReg *s)
 
 void helper_cvtpi2pd(CPUX86State *env, ZMMReg *d, MMXReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     double d0 = (double)(int32_t)s->MMX_L(0);
     double d1 = (double)(int32_t)s->MMX_L(1);
@@ -1105,6 +1154,7 @@ void helper_cvtpi2pd(CPUX86State *env, ZMMReg *d, MMXReg *s)
 
 void helper_cvtsi2ss(CPUX86State *env, ZMMReg *d, uint32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float f = (float)(int32_t)val;
     memcpy(&d->ZMM_S(0), &f, sizeof(f));
@@ -1115,6 +1165,7 @@ void helper_cvtsi2ss(CPUX86State *env, ZMMReg *d, uint32_t val)
 
 void helper_cvtsi2sd(CPUX86State *env, ZMMReg *d, uint32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     double dd = (double)(int32_t)val;
     memcpy(&d->ZMM_D(0), &dd, sizeof(dd));
@@ -1126,11 +1177,13 @@ void helper_cvtsi2sd(CPUX86State *env, ZMMReg *d, uint32_t val)
 #ifdef TARGET_X86_64
 void helper_cvtsq2ss(CPUX86State *env, ZMMReg *d, uint64_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     d->ZMM_S(0) = int64_to_float32(val, &env->sse_status);
 }
 
 void helper_cvtsq2sd(CPUX86State *env, ZMMReg *d, uint64_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     d->ZMM_D(0) = int64_to_float64(val, &env->sse_status);
 }
 #endif
@@ -1175,6 +1228,7 @@ WRAP_FLOATCONV(int64_t, float64_to_int64_round_to_zero, float64, INT64_MIN)
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT && SHIFT == 1
 void glue(helper_cvtps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     float32x4_t vf = vld1q_f32((const float *)&s->ZMM_S(0));
     int32x4_t vi = vcvtnq_s32_f32(vf);
     /* x86 returns INT32_MIN for NaN; ARM64 returns 0 */
@@ -1185,6 +1239,7 @@ void glue(helper_cvtps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 
 void glue(helper_cvtpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     double d0, d1;
     memcpy(&d0, &s->ZMM_D(0), sizeof(d0));
     memcpy(&d1, &s->ZMM_D(1), sizeof(d1));
@@ -1195,6 +1250,7 @@ void glue(helper_cvtpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #else
 void glue(helper_cvtps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 0; i < 2 << SHIFT; i++) {
         d->ZMM_L(i) = x86_float32_to_int32(s->ZMM_S(i), &env->sse_status);
@@ -1203,6 +1259,7 @@ void glue(helper_cvtps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 
 void glue(helper_cvtpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 0; i < 1 << SHIFT; i++) {
         d->ZMM_L(i) = x86_float64_to_int32(s->ZMM_D(i), &env->sse_status);
@@ -1216,6 +1273,7 @@ void glue(helper_cvtpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #if SHIFT == 1
 void helper_cvtps2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float f;
     memcpy(&f, &s->ZMM_S(0), sizeof(f));
@@ -1230,6 +1288,7 @@ void helper_cvtps2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 
 void helper_cvtpd2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     double dd;
     memcpy(&dd, &s->ZMM_D(0), sizeof(dd));
@@ -1244,6 +1303,7 @@ void helper_cvtpd2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 
 int32_t helper_cvtss2si(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float f;
     memcpy(&f, &s->ZMM_S(0), sizeof(f));
@@ -1256,6 +1316,7 @@ int32_t helper_cvtss2si(CPUX86State *env, ZMMReg *s)
 
 int32_t helper_cvtsd2si(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     double dd;
     memcpy(&dd, &s->ZMM_D(0), sizeof(dd));
@@ -1269,11 +1330,13 @@ int32_t helper_cvtsd2si(CPUX86State *env, ZMMReg *s)
 #ifdef TARGET_X86_64
 int64_t helper_cvtss2sq(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     return x86_float32_to_int64(s->ZMM_S(0), &env->sse_status);
 }
 
 int64_t helper_cvtsd2sq(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     return x86_float64_to_int64(s->ZMM_D(0), &env->sse_status);
 }
 #endif
@@ -1283,6 +1346,7 @@ int64_t helper_cvtsd2sq(CPUX86State *env, ZMMReg *s)
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT && SHIFT == 1
 void glue(helper_cvttps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     float32x4_t vf = vld1q_f32((const float *)&s->ZMM_S(0));
     int32x4_t vi = vcvtq_s32_f32(vf);
     uint32x4_t nan_mask = vmvnq_u32(vceqq_f32(vf, vf));
@@ -1292,6 +1356,7 @@ void glue(helper_cvttps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 
 void glue(helper_cvttpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     double d0, d1;
     memcpy(&d0, &s->ZMM_D(0), sizeof(d0));
     memcpy(&d1, &s->ZMM_D(1), sizeof(d1));
@@ -1302,6 +1367,7 @@ void glue(helper_cvttpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #else
 void glue(helper_cvttps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 0; i < 2 << SHIFT; i++) {
         d->ZMM_L(i) = x86_float32_to_int32_round_to_zero(s->ZMM_S(i),
@@ -1311,6 +1377,7 @@ void glue(helper_cvttps2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 
 void glue(helper_cvttpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     int i;
     for (i = 0; i < 1 << SHIFT; i++) {
         d->ZMM_L(i) = x86_float64_to_int32_round_to_zero(s->ZMM_D(i),
@@ -1325,6 +1392,7 @@ void glue(helper_cvttpd2dq, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #if SHIFT == 1
 void helper_cvttps2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float f;
     memcpy(&f, &s->ZMM_S(0), sizeof(f));
@@ -1339,6 +1407,7 @@ void helper_cvttps2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 
 void helper_cvttpd2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     double dd;
     memcpy(&dd, &s->ZMM_D(0), sizeof(dd));
@@ -1353,6 +1422,7 @@ void helper_cvttpd2pi(CPUX86State *env, MMXReg *d, ZMMReg *s)
 
 int32_t helper_cvttss2si(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float f;
     memcpy(&f, &s->ZMM_S(0), sizeof(f));
@@ -1365,6 +1435,7 @@ int32_t helper_cvttss2si(CPUX86State *env, ZMMReg *s)
 
 int32_t helper_cvttsd2si(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     double dd;
     memcpy(&dd, &s->ZMM_D(0), sizeof(dd));
@@ -1378,11 +1449,13 @@ int32_t helper_cvttsd2si(CPUX86State *env, ZMMReg *s)
 #ifdef TARGET_X86_64
 int64_t helper_cvttss2sq(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     return x86_float32_to_int64_round_to_zero(s->ZMM_S(0), &env->sse_status);
 }
 
 int64_t helper_cvttsd2sq(CPUX86State *env, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_CONVERT);
     return x86_float64_to_int64_round_to_zero(s->ZMM_D(0), &env->sse_status);
 }
 #endif
@@ -1391,6 +1464,7 @@ int64_t helper_cvttsd2sq(CPUX86State *env, ZMMReg *s)
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT && SHIFT == 1
 void glue(helper_rsqrtps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t vf = vld1q_f32((const float *)&s->ZMM_S(0));
     float32x4_t est = vrsqrteq_f32(vf);
     est = vmulq_f32(est, vrsqrtsq_f32(vf, vmulq_f32(est, est)));
@@ -1399,6 +1473,7 @@ void glue(helper_rsqrtps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #else
 void glue(helper_rsqrtps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int old_flags = get_float_exception_flags(&env->sse_status);
     int i;
     for (i = 0; i < 2 << SHIFT; i++) {
@@ -1413,6 +1488,7 @@ void glue(helper_rsqrtps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #if SHIFT == 1
 void helper_rsqrtss(CPUX86State *env, ZMMReg *d, ZMMReg *v, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float32x2_t vf = vld1_dup_f32((const float *)&s->ZMM_S(0));
     float32x2_t est = vrsqrte_f32(vf);
@@ -1435,6 +1511,7 @@ void helper_rsqrtss(CPUX86State *env, ZMMReg *d, ZMMReg *v, ZMMReg *s)
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT && SHIFT == 1
 void glue(helper_rcpps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t vf = vld1q_f32((const float *)&s->ZMM_S(0));
     float32x4_t est = vrecpeq_f32(vf);
     est = vmulq_f32(est, vrecpsq_f32(vf, est));
@@ -1443,6 +1520,7 @@ void glue(helper_rcpps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #else
 void glue(helper_rcpps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int old_flags = get_float_exception_flags(&env->sse_status);
     int i;
     for (i = 0; i < 2 << SHIFT; i++) {
@@ -1455,6 +1533,7 @@ void glue(helper_rcpps, SUFFIX)(CPUX86State *env, ZMMReg *d, ZMMReg *s)
 #if SHIFT == 1
 void helper_rcpss(CPUX86State *env, ZMMReg *d, ZMMReg *v, ZMMReg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
 #if defined(XBOX) && defined(__aarch64__) && XEMU_OPT_NATIVE_FLOAT
     float32x2_t vf = vld1_dup_f32((const float *)&s->ZMM_S(0));
     float32x2_t est = vrecpe_f32(vf);
@@ -1522,6 +1601,7 @@ void helper_insertq_i(CPUX86State *env, ZMMReg *d, ZMMReg *s, int index, int len
 
 void glue(helper_haddps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t vv = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     float32x4_t r = vpaddq_f32(vv, vs);
@@ -1530,6 +1610,7 @@ void glue(helper_haddps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_hsubps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t vv = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vs = vld1q_f32((const float *)&s->ZMM_S(0));
     /* Deinterleave into even/odd pairs, then subtract */
@@ -1540,6 +1621,7 @@ void glue(helper_hsubps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_haddpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t vv = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     float64x2_t r = vpaddq_f64(vv, vs);
@@ -1548,6 +1630,7 @@ void glue(helper_haddpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_hsubpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t vv = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vs = vld1q_f64((const double *)&s->ZMM_D(0));
     float64x2_t a = vuzp1q_f64(vv, vs);
@@ -1557,6 +1640,7 @@ void glue(helper_hsubpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_addsubps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));
     float32x4_t vb = vld1q_f32((const float *)&s->ZMM_S(0));
     float32x4_t add = vaddq_f32(va, vb);
@@ -1569,6 +1653,7 @@ void glue(helper_addsubps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_addsubpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     float64x2_t va = vld1q_f64((const double *)&v->ZMM_D(0));
     float64x2_t vb = vld1q_f64((const double *)&s->ZMM_D(0));
     float64x2_t add = vaddq_f64(va, vb);
@@ -1583,6 +1668,7 @@ void glue(helper_addsubpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 #define SSE_HELPER_HPS(name, F)  \
 void glue(helper_ ## name, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s) \
 {                                                                 \
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);                          \
     float32 r[2 << SHIFT];                                        \
     int i, j, k;                                                  \
     for (k = 0; k < 2 << SHIFT; k += LANE_WIDTH / 4) {            \
@@ -1604,6 +1690,7 @@ SSE_HELPER_HPS(hsubps, float32_sub)
 #define SSE_HELPER_HPD(name, F)  \
 void glue(helper_ ## name, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s) \
 {                                                                 \
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);                          \
     float64 r[1 << SHIFT];                                        \
     int i, j, k;                                                  \
     for (k = 0; k < 1 << SHIFT; k += LANE_WIDTH / 8) {            \
@@ -1624,6 +1711,7 @@ SSE_HELPER_HPD(hsubpd, float64_sub)
 
 void glue(helper_addsubps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int i;
     for (i = 0; i < 2 << SHIFT; i += 2) {
         d->ZMM_S(i) = float32_sub(v->ZMM_S(i), s->ZMM_S(i), &env->sse_status);
@@ -1633,6 +1721,7 @@ void glue(helper_addsubps, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 
 void glue(helper_addsubpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int i;
     for (i = 0; i < 1 << SHIFT; i += 2) {
         d->ZMM_D(i) = float64_sub(v->ZMM_D(i), s->ZMM_D(i), &env->sse_status);
@@ -1667,6 +1756,7 @@ static inline uint64x2_t neon_notq_u64(uint64x2_t v)
     void glue(helper_ ## name ## ps, SUFFIX)(CPUX86State *env,              \
                                              Reg *d, Reg *v, Reg *s)        \
     {                                                                       \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);                     \
         float32x4_t va = vld1q_f32((const float *)&v->ZMM_S(0));           \
         float32x4_t vb = vld1q_f32((const float *)&s->ZMM_S(0));          \
         uint32x4_t r = (expr);                                              \
@@ -1677,6 +1767,7 @@ static inline uint64x2_t neon_notq_u64(uint64x2_t v)
     void glue(helper_ ## name ## pd, SUFFIX)(CPUX86State *env,              \
                                              Reg *d, Reg *v, Reg *s)        \
     {                                                                       \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);                     \
         float64x2_t da = vld1q_f64((const double *)&v->ZMM_D(0));          \
         float64x2_t db = vld1q_f64((const double *)&s->ZMM_D(0));         \
         uint64x2_t r = (expr64);                                            \
@@ -1768,6 +1859,7 @@ NEON_CMP_PD(cmptrues,  vdupq_n_u64(UINT64_MAX))
     void glue(helper_ ## name ## ps, SUFFIX)(CPUX86State *env,          \
                                              Reg *d, Reg *v, Reg *s)    \
     {                                                                   \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);                     \
         int i;                                                          \
         for (i = 0; i < 2 << SHIFT; i++) {                              \
             d->ZMM_L(i) = C(F(32, v->ZMM_S(i), s->ZMM_S(i))) ? -1 : 0;  \
@@ -1777,6 +1869,7 @@ NEON_CMP_PD(cmptrues,  vdupq_n_u64(UINT64_MAX))
     void glue(helper_ ## name ## pd, SUFFIX)(CPUX86State *env,          \
                                              Reg *d, Reg *v, Reg *s)    \
     {                                                                   \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);                     \
         int i;                                                          \
         for (i = 0; i < 1 << SHIFT; i++) {                              \
             d->ZMM_Q(i) = C(F(64, v->ZMM_D(i), s->ZMM_D(i))) ? -1 : 0;  \
@@ -1789,6 +1882,7 @@ NEON_CMP_PD(cmptrues,  vdupq_n_u64(UINT64_MAX))
     SSE_HELPER_CMP_P(name, F, C)                                            \
     void helper_ ## name ## ss(CPUX86State *env, Reg *d, Reg *v, Reg *s)    \
     {                                                                       \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);                     \
         int i;                                                              \
         d->ZMM_L(0) = C(F(32, v->ZMM_S(0), s->ZMM_S(0))) ? -1 : 0;          \
         for (i = 1; i < 2 << SHIFT; i++) {                                  \
@@ -1798,6 +1892,7 @@ NEON_CMP_PD(cmptrues,  vdupq_n_u64(UINT64_MAX))
                                                                             \
     void helper_ ## name ## sd(CPUX86State *env, Reg *d, Reg *v, Reg *s)    \
     {                                                                       \
+        XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);                     \
         int i;                                                              \
         d->ZMM_Q(0) = C(F(64, v->ZMM_D(0), s->ZMM_D(0))) ? -1 : 0;          \
         for (i = 1; i < 1 << SHIFT; i++) {                                  \
@@ -1878,6 +1973,7 @@ static const int comis_eflags[4] = {CC_C, CC_Z, 0, CC_Z | CC_P | CC_C};
 
 void helper_ucomiss(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);
     FloatRelation ret;
     float32 s0, s1;
 
@@ -1894,6 +1990,7 @@ void helper_ucomiss(CPUX86State *env, Reg *d, Reg *s)
 
 void helper_comiss(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);
     FloatRelation ret;
     float32 s0, s1;
 
@@ -1910,6 +2007,7 @@ void helper_comiss(CPUX86State *env, Reg *d, Reg *s)
 
 void helper_ucomisd(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);
     FloatRelation ret;
     float64 d0, d1;
 
@@ -1926,6 +2024,7 @@ void helper_ucomisd(CPUX86State *env, Reg *d, Reg *s)
 
 void helper_comisd(CPUX86State *env, Reg *d, Reg *s)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_COMPARE);
     FloatRelation ret;
     float64 d0, d1;
 
@@ -2504,6 +2603,7 @@ void glue(helper_phminposuw, SUFFIX)(CPUX86State *env, Reg *d, Reg *s)
 void glue(helper_roundps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s,
                                   uint32_t mode)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int old_flags = get_float_exception_flags(&env->sse_status);
     signed char prev_rounding_mode;
     int i;
@@ -2528,6 +2628,7 @@ void glue(helper_roundps, SUFFIX)(CPUX86State *env, Reg *d, Reg *s,
 void glue(helper_roundpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s,
                                   uint32_t mode)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_PACKED);
     int old_flags = get_float_exception_flags(&env->sse_status);
     signed char prev_rounding_mode;
     int i;
@@ -2553,6 +2654,7 @@ void glue(helper_roundpd, SUFFIX)(CPUX86State *env, Reg *d, Reg *s,
 void glue(helper_roundss, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s,
                                   uint32_t mode)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     int old_flags = get_float_exception_flags(&env->sse_status);
     signed char prev_rounding_mode;
     int i;
@@ -2578,6 +2680,7 @@ void glue(helper_roundss, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s,
 void glue(helper_roundsd, SUFFIX)(CPUX86State *env, Reg *d, Reg *v, Reg *s,
                                   uint32_t mode)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_SCALAR);
     int old_flags = get_float_exception_flags(&env->sse_status);
     signed char prev_rounding_mode;
     int i;

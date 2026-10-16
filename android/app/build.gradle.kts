@@ -44,12 +44,17 @@ val localCmakeArguments = listOf(
  */
 val vulkanValidationJniLibs =
   providers.environmentVariable("XEMU_VVL_JNILIBS").orNull
+val cpuProfileHooks = providers.gradleProperty("xemu.cpuProfileHooks")
+  .map { it.toBooleanStrict() }.getOrElse(false)
 
 android {
   namespace = "com.izzy2lost.x1box"
   compileSdk = 36
   buildToolsVersion = "36.1.0"
   ndkVersion = "30.0.15729638"
+  buildFeatures {
+    buildConfig = true
+  }
 
   defaultConfig {
     applicationId = "com.izzy2lost.x1box"
@@ -63,6 +68,7 @@ android {
 
     versionCode = 39
     versionName = "1.2.11"
+    buildConfigField("boolean", "CPU_PROFILE_AVAILABLE", cpuProfileHooks.toString())
 
     ndk {
       abiFilters += listOf("arm64-v8a")
@@ -73,6 +79,7 @@ android {
         arguments += listOf(
           "-DXEMU_ANDROID_BUILD_ID=3",
           "-DXEMU_ENABLE_XISO_CONVERTER=ON",
+          "-DXEMU_ENABLE_CPU_PROFILE=${if (cpuProfileHooks) "ON" else "OFF"}",
           "-DCMAKE_C_FLAGS_DEBUG=-O2 -g0",
           "-DCMAKE_CXX_FLAGS_DEBUG=-O2 -g0",
           "-DCMAKE_C_FLAGS_RELWITHDEBINFO=-O2 -g0 -fvisibility=hidden",
@@ -125,7 +132,7 @@ android {
       initWith(getByName("release"))
       // Keep the locally signed test build alongside the production app.
       applicationIdSuffix = ".dev"
-      versionNameSuffix = "-pocket-s-rc10"
+      versionNameSuffix = "-pocket-s-rc11" + if (cpuProfileHooks) "-cpu-profile" else ""
       isDebuggable = false
       isProfileable = true
       signingConfig = signingConfigs.getByName("debug")

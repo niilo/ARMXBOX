@@ -5,6 +5,7 @@ i386_ss.add(when: 'CONFIG_TCG', if_true: files(
   'excp_helper.c',
   'fpu_helper.c',
   'fpu_helper_hard.c',
+  'fpu-profile.c',
   'int_helper.c',
   'mem_helper.c',
   'misc_helper.c',

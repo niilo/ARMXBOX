@@ -22,6 +22,7 @@ option(XEMU_ENABLE_LTO "Enable interprocedural optimization for release builds" 
 # compiled in by default because it is how this fork gets profiled. Turn it OFF
 # for a shipping build to drop that work entirely.
 option(XEMU_ENABLE_PERF_LOG "Compile in nv2a performance telemetry" ON)
+option(XEMU_ENABLE_CPU_PROFILE "Compile optional runtime CPU helper profiling" OFF)
 # assert() must stay live: QEMU hard-errors on NDEBUG ("building with NDEBUG is
 # not supported", include/qemu/osdep.h), so turning asserts off is not an
 # available trade no matter how much faster it might be. These flags cancel
@@ -36,12 +37,15 @@ set(XEMU_ASSERT_FLAG $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:
 option(XEMU_OPT_NATIVE_FLOAT "Enable native ARM64 float operations for SSE/FPU" ON)
 option(XEMU_OPT_TCG_PEEPHOLE "Enable TCG optimizer setcond+brcond peephole fusion" ON)
 option(XEMU_OPT_TB_CACHE_HINTS "Enable persistent TB cache hints (pre-warm on load)" ON)
+option(XEMU_OPT_X87_STACK "Inline exact ARM64 x87 stack and register operations" OFF)
 set(XEMU_OPT_DEFINITIONS
   XEMU_OPT_NATIVE_FLOAT=$<BOOL:${XEMU_OPT_NATIVE_FLOAT}>
   XEMU_OPT_TCG_PEEPHOLE=$<BOOL:${XEMU_OPT_TCG_PEEPHOLE}>
   XEMU_OPT_TB_CACHE_HINTS=$<BOOL:${XEMU_OPT_TB_CACHE_HINTS}>
+  XEMU_OPT_X87_STACK=$<BOOL:${XEMU_OPT_X87_STACK}>
+  XEMU_ENABLE_CPU_PROFILE=$<BOOL:${XEMU_ENABLE_CPU_PROFILE}>
 )
-message(STATUS "Native optimization switches: float=${XEMU_OPT_NATIVE_FLOAT}, peephole=${XEMU_OPT_TCG_PEEPHOLE}, TB hints=${XEMU_OPT_TB_CACHE_HINTS}")
+message(STATUS "Native optimization switches: float=${XEMU_OPT_NATIVE_FLOAT}, peephole=${XEMU_OPT_TCG_PEEPHOLE}, TB hints=${XEMU_OPT_TB_CACHE_HINTS}, x87 stack=${XEMU_OPT_X87_STACK}")
 
 if(XEMU_ENABLE_LTO)
   # CMake 3.22's Android IPO probe requests GNU gold, which modern NDKs no

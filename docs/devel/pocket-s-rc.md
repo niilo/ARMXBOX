@@ -1,4 +1,79 @@
-# X1 BOX 1.2.11 Pocket S RC10
+# X1 BOX 1.2.11 Pocket S RC11
+
+RC11 is the CPU execution reference for the next comparison. RC12 enables
+exact ARM64 x87 stack/register lowering. Both normal builds compile the new
+profiling hooks out entirely. A separate RC11 CPU Profile APK supplies runtime
+helper measurements using the reference path.
+All three builds retain RC8's rendering fixes and use version code 39 with the same
+test certificate, allowing updates between the candidates without clearing data.
+
+## RC11 CPU measurements and RC12 exact x87 stack operations
+
+The earlier Android `FP JIT: ON` message printed the requested preference,
+although the native-double-storage inline path is gated to x86-64 hosts. The
+new `xemu-cpu-mode` startup line distinguishes the actual ARM64 path: 80-bit
+x87 storage, guarded native arithmetic helpers with softfloat fallback, the
+raw-stack compile option, and whether runtime profiling is enabled. Existing
+safe arithmetic and its precision checks remain in place.
+
+Only the RC11 CPU Profile APK shows Settings > Maintenance > CPU profiling.
+Enable it and save Settings before launching a separate diagnostic run.
+The normal RC11/RC12 APKs have no profiler hooks, scopes or runtime branches.
+A compiler check found that merely switching profiling off at runtime retained
+a helper stack frame, so this separate build keeps that cost out of FPS tests.
+With profiling enabled, helper entries are
+counted at runtime, selected calls are sampled once per 1,024 entries in each
+category, and the helper-executing thread emits summaries at intervals of at
+least five seconds. The log tags are `xemu-cpu-run`, `xemu-cpu-native` and
+`xemu-cpu-sample`. Normal performance runs should leave CPU profiling off.
+
+The measurements distinguish x87/SSE helper categories, guarded native-x87
+success/fallback counts, and sampled elapsed/thread CPU time. Thread CPU time
+covers that host thread's work during the interval, including translated code,
+helpers and other work; it is not whole-emulator utilization. Sampled scopes
+include measurement overhead and can overlap if helpers nest. A guest exception
+can leave a counted entry without a completed timed sample. These are diagnostic
+observations, not precise per-frame costs or raw latency percentiles.
+
+RC12 enables `XEMU_OPT_X87_STACK` on ARM64. It lowers six operations directly to
+integer TCG IR: x87 push/pop, three register/temporary moves and FXCH. Moves and
+swaps retain the complete register object and all 80 architectural bits; there
+is no conversion to double precision. Stack tags and TOP, pending instruction
+and data pointers, aliases and normal helper/block boundaries are preserved.
+Arithmetic, guest memory operations, interrupts, GPU synchronization and audio
+settings are unchanged. The legacy native-double-storage path stays disabled
+on ARM64. Other host architectures retain their existing path.
+
+The source-level change removes the selected helper calls. Exact CPU-state
+comparison and actual TCG code execution establish correctness for the covered
+cases; they do not establish SSX 3 instruction frequency or a device FPS gain.
+FEXCore is a research reference for this work, not a new runtime dependency.
+
+For device testing, use the same SSX 3 route, Turnip driver, resolution, power
+and fan mode, sound output and comparable starting temperatures:
+
+1. Leave CPU profiling off, save Settings and launch RC11. Capture a full run.
+2. Install RC12, keep CPU profiling off and repeat the same route after cooling.
+3. For helper diagnostics, install RC11 CPU Profile, enable CPU profiling, save
+   Settings, launch the game again and export a separate log. Label this as a
+   profiling run; it is not an FPS comparison build.
+
+The 3x comparison is the primary performance target. A 1x comparison can help
+distinguish resolution cost. Note any returning vertex/texture popping or sound
+change. Do not attribute a profiling-on FPS difference solely to the raw-stack
+optimization: removing helpers also removes their profiling hooks.
+
+Cloud validation covers the source-IR differential matrix with GCC ASan/UBSan
+and Clang, plus 102 real native-TCG programs and 158,576 CPU-state comparisons.
+The retained tests include helper-boundary observations and negative controls.
+The real-TCG execution uses an x86-64 backend with the selected raw emitter
+bodies; Android ARM64 compilation is checked separately. No target-device
+execution or guest MMU fault/unwind is covered by those fixtures. Removing
+helpers also grows generated code in the host fixture, so device performance
+must decide whether to retain this candidate. APK checks cover signing,
+manifest, native dependency closure and 16 KiB ELF alignment.
+
+## Previous RC10 audio candidate
 
 This ARM64 Android candidate contains changes that can be checked without game
 files or target hardware. It is intended for the AYANEO Pocket S on Android 13.
@@ -75,7 +150,7 @@ popping events needs device confirmation. Correct freshness can require work
 that the invalid fast path skipped, so a quality fix may cost some cache hits.
 Required assertions, driver workarounds and resource retirement remain intact.
 
-The RC8/RC9/RC10 test batch shares version code 39, with distinct version names.
+The test candidates from RC8 onward share version code 39, with distinct version names.
 This permits switching between its APKs using an ordinary update with the same
 signing certificate and existing data. Test RC8 first, then RC9 and RC10,
 keeping Turnip/options and starting temperatures comparable. Later candidates
