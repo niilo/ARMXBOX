@@ -132,7 +132,7 @@ android {
       initWith(getByName("release"))
       // Keep the locally signed test build alongside the production app.
       applicationIdSuffix = ".dev"
-      versionNameSuffix = "-pocket-s-rc11" + if (cpuProfileHooks) "-cpu-profile" else ""
+      versionNameSuffix = "-pocket-s-rc12" + if (cpuProfileHooks) "-cpu-profile" else ""
       isDebuggable = false
       isProfileable = true
       signingConfig = signingConfigs.getByName("debug")

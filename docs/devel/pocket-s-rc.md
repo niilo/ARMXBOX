@@ -1,6 +1,6 @@
-# X1 BOX 1.2.11 Pocket S RC11
+# X1 BOX 1.2.11 Pocket S RC12
 
-RC11 is the CPU execution reference for the next comparison. RC12 enables
+RC11 is the CPU execution reference for this comparison. RC12 enables
 exact ARM64 x87 stack/register lowering. Both normal builds compile the new
 profiling hooks out entirely. A separate RC11 CPU Profile APK supplies runtime
 helper measurements using the reference path.
@@ -52,8 +52,8 @@ FEXCore is a research reference for this work, not a new runtime dependency.
 For device testing, use the same SSX 3 route, Turnip driver, resolution, power
 and fan mode, sound output and comparable starting temperatures:
 
-1. Leave CPU profiling off, save Settings and launch RC11. Capture a full run.
-2. Install RC12, keep CPU profiling off and repeat the same route after cooling.
+1. Install normal RC11 and capture a full run; its profiling hooks are absent.
+2. Install normal RC12 and repeat the same route after cooling.
 3. For helper diagnostics, install RC11 CPU Profile, enable CPU profiling, save
    Settings, launch the game again and export a separate log. Label this as a
    profiling run; it is not an FPS comparison build.
@@ -62,6 +62,14 @@ The 3x comparison is the primary performance target. A 1x comparison can help
 distinguish resolution cost. Note any returning vertex/texture popping or sound
 change. Do not attribute a profiling-on FPS difference solely to the raw-stack
 optimization: removing helpers also removes their profiling hooks.
+
+The Android CMake default for `XEMU_OPT_X87_STACK` is ON in RC12; it is OFF in
+the RC11 source commit. Existing CMake caches retain explicitly configured
+values, so builders must set `-DXEMU_OPT_X87_STACK=ON` for RC12 or `OFF` for
+the reference in their configured native build directory. The delivered APK
+manifests include checks of actual compile commands, not only option defaults.
+The separate diagnostic build uses Gradle `-Pxemu.cpuProfileHooks=true` at the
+RC11 commit. Normal builds omit that property, compiling the hooks out.
 
 Cloud validation covers the source-IR differential matrix with GCC ASan/UBSan
 and Clang, plus 102 real native-TCG programs and 158,576 CPU-state comparisons.

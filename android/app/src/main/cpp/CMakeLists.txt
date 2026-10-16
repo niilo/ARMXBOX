@@ -37,7 +37,7 @@ set(XEMU_ASSERT_FLAG $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:
 option(XEMU_OPT_NATIVE_FLOAT "Enable native ARM64 float operations for SSE/FPU" ON)
 option(XEMU_OPT_TCG_PEEPHOLE "Enable TCG optimizer setcond+brcond peephole fusion" ON)
 option(XEMU_OPT_TB_CACHE_HINTS "Enable persistent TB cache hints (pre-warm on load)" ON)
-option(XEMU_OPT_X87_STACK "Inline exact ARM64 x87 stack and register operations" OFF)
+option(XEMU_OPT_X87_STACK "Inline exact ARM64 x87 stack and register operations" ON)
 set(XEMU_OPT_DEFINITIONS
   XEMU_OPT_NATIVE_FLOAT=$<BOOL:${XEMU_OPT_NATIVE_FLOAT}>
   XEMU_OPT_TCG_PEEPHOLE=$<BOOL:${XEMU_OPT_TCG_PEEPHOLE}>
