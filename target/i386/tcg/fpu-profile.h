@@ -39,6 +39,69 @@ enum XemuFpuProfileNative {
     XEMU_FPU_NATIVE_COUNT,
 };
 
+enum XemuFpuProfileTransfer {
+    XEMU_FPU_LS_FLDS_FT0,
+    XEMU_FPU_LS_FLDL_FT0,
+    XEMU_FPU_LS_FILDL_FT0,
+    XEMU_FPU_LS_FLDS_ST0,
+    XEMU_FPU_LS_FLDL_ST0,
+    XEMU_FPU_LS_FILDL_ST0,
+    XEMU_FPU_LS_FILDLL_ST0,
+    XEMU_FPU_LS_FSTS_ST0,
+    XEMU_FPU_LS_FSTL_ST0,
+    XEMU_FPU_LS_FLDT_ST0,
+    XEMU_FPU_LS_FSTT_ST0,
+    XEMU_FPU_LS_FBLD_ST0,
+    XEMU_FPU_LS_FBST_ST0,
+    XEMU_FPU_LS_COUNT,
+};
+
+/* Eligibility/selected branches, not observations of new exception flags. */
+enum XemuFpuProfileTransferPath {
+    XEMU_FPU_LS_NORMAL_EXACT_FAST,
+    XEMU_FPU_LS_PRECISION_FALLBACK,
+    XEMU_FPU_LS_NON_NORMAL_FALLBACK,
+    XEMU_FPU_LS_GENERIC,
+    XEMU_FPU_LS_PATH_COUNT,
+};
+
+enum XemuFpuProfileRejectKind {
+    XEMU_FPU_REJECT_BINOP,
+    XEMU_FPU_REJECT_SQRT,
+    XEMU_FPU_REJECT_KIND_COUNT,
+};
+
+enum XemuFpuProfileRejectReason {
+    XEMU_FPU_REJECT_PC24,
+    XEMU_FPU_REJECT_PC64,
+    XEMU_FPU_REJECT_PC_RESERVED,
+    XEMU_FPU_REJECT_ROUND_DOWN,
+    XEMU_FPU_REJECT_ROUND_UP,
+    XEMU_FPU_REJECT_ROUND_ZERO,
+    XEMU_FPU_REJECT_POLICY_OFF,
+    XEMU_FPU_REJECT_A_DENORMAL,
+    XEMU_FPU_REJECT_A_PSEUDO_DENORMAL,
+    XEMU_FPU_REJECT_A_UNNORMAL,
+    XEMU_FPU_REJECT_A_INFINITY,
+    XEMU_FPU_REJECT_A_NAN,
+    XEMU_FPU_REJECT_A_PRECISION,
+    XEMU_FPU_REJECT_A_EXP_LOW,
+    XEMU_FPU_REJECT_A_EXP_HIGH,
+    XEMU_FPU_REJECT_B_DENORMAL,
+    XEMU_FPU_REJECT_B_PSEUDO_DENORMAL,
+    XEMU_FPU_REJECT_B_UNNORMAL,
+    XEMU_FPU_REJECT_B_INFINITY,
+    XEMU_FPU_REJECT_B_NAN,
+    XEMU_FPU_REJECT_B_PRECISION,
+    XEMU_FPU_REJECT_B_EXP_LOW,
+    XEMU_FPU_REJECT_B_EXP_HIGH,
+    XEMU_FPU_REJECT_DIV_ZERO,
+    XEMU_FPU_REJECT_SQRT_NEGATIVE,
+    XEMU_FPU_REJECT_RESULT,
+    XEMU_FPU_REJECT_INVALID_OP,
+    XEMU_FPU_REJECT_REASON_COUNT,
+};
+
 #ifndef XEMU_ENABLE_CPU_PROFILE
 #define XEMU_ENABLE_CPU_PROFILE 0
 #endif
@@ -60,6 +123,8 @@ typedef struct XemuFpuProfileTotals {
     uint64_t cpu_ns[XEMU_FPU_CATEGORY_COUNT];
     uint64_t native_hit[XEMU_FPU_NATIVE_COUNT];
     uint64_t native_fallback[XEMU_FPU_NATIVE_COUNT];
+    uint64_t transfer[XEMU_FPU_LS_COUNT][XEMU_FPU_LS_PATH_COUNT];
+    uint64_t reject[XEMU_FPU_REJECT_KIND_COUNT][XEMU_FPU_REJECT_REASON_COUNT];
 } XemuFpuProfileTotals;
 
 typedef struct XemuFpuProfileThread {
@@ -83,6 +148,11 @@ extern bool xemu_fpu_profile_enabled;
 extern __thread XemuFpuProfileThread xemu_fpu_profile_thread;
 void xemu_fpu_profile_sample_start(XemuFpuProfileScope *scope);
 void xemu_fpu_profile_sample_end(XemuFpuProfileScope *scope);
+void xemu_fpu_profile_reject_binop(uint16_t fpuc, bool policy, int op,
+                                  uint64_t a_low, uint16_t a_high,
+                                  uint64_t b_low, uint16_t b_high);
+void xemu_fpu_profile_reject_sqrt(uint16_t fpuc, bool policy,
+                                 uint64_t low, uint16_t high);
 
 static inline XemuFpuProfileScope
 xemu_fpu_profile_begin(enum XemuFpuProfileCategory category)
@@ -128,9 +198,37 @@ xemu_fpu_profile_native_result(enum XemuFpuProfileNative kind, bool hit)
     XemuFpuProfileScope xemu_fpu_scope \
         __attribute__((cleanup(xemu_fpu_profile_scope_end))) = \
         xemu_fpu_profile_begin(category)
+
+/* Capture only the original policy call in its original short-circuit slot. */
+#define XEMU_FPU_PROFILE_POLICY_STATE bool xemu_fpu_policy = true
+#define XEMU_FPU_PROFILE_POLICY(expression) \
+    (xemu_fpu_policy = (expression))
+
+/* Lazy arguments: runtime-off and compiled-out hooks do no reason work. */
+#define XEMU_FPU_PROFILE_TRANSFER(helper, path) do { \
+    if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
+        xemu_fpu_profile_thread.totals.transfer[(helper)][(path)]++; \
+    } \
+} while (0)
+#define XEMU_FPU_PROFILE_REJECT_BINOP(fpuc, op, al, ah, bl, bh) do { \
+    if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
+        xemu_fpu_profile_reject_binop((fpuc), xemu_fpu_policy, (op), \
+                                     (al), (ah), (bl), (bh)); \
+    } \
+} while (0)
+#define XEMU_FPU_PROFILE_REJECT_SQRT(fpuc, low, high) do { \
+    if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
+        xemu_fpu_profile_reject_sqrt((fpuc), xemu_fpu_policy, (low), (high)); \
+    } \
+} while (0)
 #else
 #define XEMU_FPU_PROFILE_SCOPE(category)
 #define xemu_fpu_profile_native_result(kind, hit) (hit)
+#define XEMU_FPU_PROFILE_POLICY_STATE
+#define XEMU_FPU_PROFILE_POLICY(expression) (expression)
+#define XEMU_FPU_PROFILE_TRANSFER(helper, path) ((void)0)
+#define XEMU_FPU_PROFILE_REJECT_BINOP(fpuc, op, al, ah, bl, bh) ((void)0)
+#define XEMU_FPU_PROFILE_REJECT_SQRT(fpuc, low, high) ((void)0)
 #endif
 
 #ifdef __cplusplus

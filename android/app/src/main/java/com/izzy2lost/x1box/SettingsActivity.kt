@@ -503,7 +503,9 @@ class SettingsActivity : AppCompatActivity() {
     switchDrawMerge.isChecked    = prefs.getBoolean("draw_merge_v2", false)
     switchAsyncCompile.isChecked = prefs.getBoolean("async_compile", false)
     switchShowFps.isChecked      = prefs.getBoolean("show_fps", false)
-    switchCpuProfile.isChecked   = prefs.getBoolean("setting_cpu_profile", false)
+    switchCpuProfile.isChecked = prefs.getBoolean(
+      "setting_cpu_profile_v2", BuildConfig.CPU_PROFILE_AVAILABLE
+    )
     switchDebugLogs.isChecked =
       prefs.getBoolean(DebugLog.PREF_ENABLED, false)
     switchNetworkEnable.isChecked =
@@ -606,7 +608,11 @@ class SettingsActivity : AppCompatActivity() {
         .putBoolean("draw_merge_v2", switchDrawMerge.isChecked)
         .putBoolean("async_compile", switchAsyncCompile.isChecked)
         .putBoolean("show_fps", switchShowFps.isChecked)
-        .putBoolean("setting_cpu_profile", switchCpuProfile.isChecked)
+        .apply {
+          if (BuildConfig.CPU_PROFILE_AVAILABLE) {
+            putBoolean("setting_cpu_profile_v2", switchCpuProfile.isChecked)
+          }
+        }
         .putBoolean(DebugLog.PREF_ENABLED, enableDebugLogs)
         .putBoolean("setting_network_enable", switchNetworkEnable.isChecked)
         .putBoolean("setting_chihiro", switchChihiro.isChecked)

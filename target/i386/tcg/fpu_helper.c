@@ -47,6 +47,18 @@
 #define FPREG_VAL(fpreg) ((fpreg).d)
 #endif
 
+#ifndef XEMU_OPT_X87_TRANSFER
+#define XEMU_OPT_X87_TRANSFER 0
+#endif
+
+#if defined(XBOX) && defined(__aarch64__) && !defined(USE_HARD_FPU) && \
+    !USE_NATIVE_DOUBLE_STORAGE && XEMU_OPT_X87_TRANSFER
+#define X87_TRANSFER_ACTIVE 1
+#include "x87-transfer.h"
+#else
+#define X87_TRANSFER_ACTIVE 0
+#endif
+
 #define FPU_RC_SHIFT        10
 #define FPU_RC_MASK         (3 << FPU_RC_SHIFT)
 #define FPU_RC_NEAR         0x000
@@ -756,11 +768,14 @@ static inline bool x87_native_binop(CPUX86State *env, int op, floatx80 a,
                                     floatx80 b, floatx80 *r)
 {
     bool inexact;
+    XEMU_FPU_PROFILE_POLICY_STATE;
 
     if ((env->fpuc & X87N_FPUC_MASK) != X87N_FPUC_MODE ||
-        !x87_native_enabled() ||
+        !XEMU_FPU_PROFILE_POLICY(x87_native_enabled()) ||
         !x87n_binop(op, a.low, a.high, b.low, b.high, &r->low, &r->high,
                     &inexact)) {
+        XEMU_FPU_PROFILE_REJECT_BINOP(env->fpuc, op, a.low, a.high,
+                                    b.low, b.high);
         return false;
     }
     x87_native_raise(env, inexact);
@@ -771,10 +786,12 @@ static inline bool x87_native_binop(CPUX86State *env, int op, floatx80 a,
 static inline bool x87_native_sqrt(CPUX86State *env, floatx80 *r)
 {
     bool inexact;
+    XEMU_FPU_PROFILE_POLICY_STATE;
 
     if ((env->fpuc & X87N_FPUC_MASK) != X87N_FPUC_MODE ||
-        !x87_native_enabled() ||
+        !XEMU_FPU_PROFILE_POLICY(x87_native_enabled()) ||
         !x87n_sqrt(r->low, r->high, &r->low, &r->high, &inexact)) {
+        XEMU_FPU_PROFILE_REJECT_SQRT(env->fpuc, r->low, r->high);
         return false;
     }
     x87_native_raise(env, inexact);
@@ -875,9 +892,44 @@ static void fpu_raise_exception(CPUX86State *env, uintptr_t retaddr)
 #endif
 }
 
+#if XEMU_FPU_PROFILE_ACTIVE && X87_TRANSFER_ACTIVE
+static enum XemuFpuProfileTransferPath
+x87_transfer_load64_fallback(uint64_t bits)
+{
+    uint32_t exp = (bits >> 52) & 0x7ff;
+
+    return exp - 1 < 0x7fe ? XEMU_FPU_LS_PRECISION_FALLBACK :
+                            XEMU_FPU_LS_NON_NORMAL_FALLBACK;
+}
+
+static enum XemuFpuProfileTransferPath
+x87_transfer_store_fallback(floatx80 value, unsigned bias, unsigned max_exp)
+{
+    uint32_t exp = (value.high & 0x7fff) - bias;
+
+    return (value.low >> 63) && exp - 1 < max_exp ?
+           XEMU_FPU_LS_PRECISION_FALLBACK : XEMU_FPU_LS_NON_NORMAL_FALLBACK;
+}
+#endif
+
 void helper_flds_FT0(CPUX86State *env, uint32_t val)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f32(val, &fast)) {
+        FT0 = fast;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_FT0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_FT0,
+                              XEMU_FPU_LS_NON_NORMAL_FALLBACK);
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_FT0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float32 f;
@@ -892,6 +944,21 @@ void helper_flds_FT0(CPUX86State *env, uint32_t val)
 void helper_fldl_FT0(CPUX86State *env, uint64_t val)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f64(val, env->fp_status.floatx80_rounding_precision, &fast)) {
+        FT0 = fast;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_FT0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_FT0,
+                              x87_transfer_load64_fallback(val));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_FT0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float64 f;
@@ -906,12 +973,32 @@ void helper_fldl_FT0(CPUX86State *env, uint64_t val)
 void helper_fildl_FT0(CPUX86State *env, int32_t val)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FILDL_FT0, XEMU_FPU_LS_GENERIC);
     FT0 = int32_to_floatx80(val, &env->fp_status);
 }
 
 void helper_flds_ST0(CPUX86State *env, uint32_t val)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f32(val, &fast)) {
+        int top = (env->fpstt - 1) & 7;
+
+        FPREG_VAL(env->fpregs[top]) = fast;
+        env->fpstt = top;
+        env->fptags[top] = 0;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_ST0,
+                              XEMU_FPU_LS_NON_NORMAL_FALLBACK);
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     int new_fpstt;
     union {
@@ -930,6 +1017,25 @@ void helper_flds_ST0(CPUX86State *env, uint32_t val)
 void helper_fldl_ST0(CPUX86State *env, uint64_t val)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f64(val, env->fp_status.floatx80_rounding_precision, &fast)) {
+        int top = (env->fpstt - 1) & 7;
+
+        FPREG_VAL(env->fpregs[top]) = fast;
+        env->fpstt = top;
+        env->fptags[top] = 0;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_ST0,
+                              x87_transfer_load64_fallback(val));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     int new_fpstt;
     union {
@@ -955,6 +1061,7 @@ static FloatX80RoundPrec tmp_maximise_precision(float_status *st)
 void helper_fildl_ST0(CPUX86State *env, int32_t val)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FILDL_ST0, XEMU_FPU_LS_GENERIC);
     int new_fpstt;
     FloatX80RoundPrec old = tmp_maximise_precision(&env->fp_status);
 
@@ -969,6 +1076,7 @@ void helper_fildl_ST0(CPUX86State *env, int32_t val)
 void helper_fildll_ST0(CPUX86State *env, int64_t val)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FILDLL_ST0, XEMU_FPU_LS_GENERIC);
     int new_fpstt;
     FloatX80RoundPrec old = tmp_maximise_precision(&env->fp_status);
 
@@ -983,6 +1091,22 @@ void helper_fildll_ST0(CPUX86State *env, int64_t val)
 uint32_t helper_fsts_ST0(CPUX86State *env)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    uint32_t fast;
+
+    if (x87t_store_f32(ST0, &fast)) {
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTS_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return fast;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTS_ST0,
+                              x87_transfer_store_fallback(ST0,
+                                                          0x3fff - 0x7f,
+                                                          0xfe));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTS_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float32 f;
@@ -997,6 +1121,22 @@ uint32_t helper_fsts_ST0(CPUX86State *env)
 uint64_t helper_fstl_ST0(CPUX86State *env)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    uint64_t fast;
+
+    if (x87t_store_f64(ST0, &fast)) {
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTL_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return fast;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTL_ST0,
+                              x87_transfer_store_fallback(ST0,
+                                                          0x3fff - 0x3ff,
+                                                          0x7fe));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTL_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float64 f;
@@ -1121,6 +1261,7 @@ int64_t helper_fisttll_ST0(CPUX86State *env)
 void helper_fldt_ST0(CPUX86State *env, target_ulong ptr)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDT_ST0, XEMU_FPU_LS_GENERIC);
     int new_fpstt;
     X86Access ac;
 
@@ -1139,6 +1280,7 @@ void helper_fldt_ST0(CPUX86State *env, target_ulong ptr)
 void helper_fstt_ST0(CPUX86State *env, target_ulong ptr)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTT_ST0, XEMU_FPU_LS_GENERIC);
     X86Access ac;
 
     access_prepare(&ac, env, ptr, 10, MMU_DATA_STORE, GETPC());
@@ -1603,6 +1745,7 @@ void helper_fninit(CPUX86State *env)
 void helper_fbld_ST0(CPUX86State *env, target_ulong ptr)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FBLD_ST0, XEMU_FPU_LS_GENERIC);
     X86Access ac;
     uint64_t val;
     unsigned int v;
@@ -1625,6 +1768,7 @@ void helper_fbld_ST0(CPUX86State *env, target_ulong ptr)
 void helper_fbst_ST0(CPUX86State *env, target_ulong ptr)
 {
     XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FBST_ST0, XEMU_FPU_LS_GENERIC);
     int old_flags = save_exception_flags(env);
     int v;
     target_ulong mem_ref, mem_end;

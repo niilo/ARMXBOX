@@ -46,6 +46,10 @@ val vulkanValidationJniLibs =
   providers.environmentVariable("XEMU_VVL_JNILIBS").orNull
 val cpuProfileHooks = providers.gradleProperty("xemu.cpuProfileHooks")
   .map { it.toBooleanStrict() }.getOrElse(false)
+val rawX87Stack = providers.gradleProperty("xemu.rawX87Stack")
+  .map { it.toBooleanStrict() }.getOrElse(false)
+val x87Transfer = providers.gradleProperty("xemu.x87Transfer")
+  .map { it.toBooleanStrict() }.getOrElse(true)
 
 android {
   namespace = "com.izzy2lost.x1box"
@@ -80,6 +84,8 @@ android {
           "-DXEMU_ANDROID_BUILD_ID=3",
           "-DXEMU_ENABLE_XISO_CONVERTER=ON",
           "-DXEMU_ENABLE_CPU_PROFILE=${if (cpuProfileHooks) "ON" else "OFF"}",
+          "-DXEMU_OPT_X87_STACK=${if (rawX87Stack) "ON" else "OFF"}",
+          "-DXEMU_OPT_X87_TRANSFER=${if (x87Transfer) "ON" else "OFF"}",
           "-DCMAKE_C_FLAGS_DEBUG=-O2 -g0",
           "-DCMAKE_CXX_FLAGS_DEBUG=-O2 -g0",
           "-DCMAKE_C_FLAGS_RELWITHDEBINFO=-O2 -g0 -fvisibility=hidden",
@@ -132,7 +138,7 @@ android {
       initWith(getByName("release"))
       // Keep the locally signed test build alongside the production app.
       applicationIdSuffix = ".dev"
-      versionNameSuffix = "-pocket-s-rc12" + if (cpuProfileHooks) "-cpu-profile" else ""
+      versionNameSuffix = "-pocket-s-rc13" + if (cpuProfileHooks) "-cpu-profile" else ""
       isDebuggable = false
       isProfileable = true
       signingConfig = signingConfigs.getByName("debug")

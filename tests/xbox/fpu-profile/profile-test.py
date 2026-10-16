@@ -73,14 +73,18 @@ def main():
                     'helper_addss', 'orig_helper_addss'),
                 '__attribute__((noinline)) ' + function(sse, 'helper_addss'),
                 function(source, 'x87_native_raise'),
-                function(source, 'x87_native_binop')]
-    macro = re.search(r'^#define X87_NATIVE_BINOP[^\n]*\\\n'
-                      r'(?:[^\n]*\\\n)*[^\n]*', source, re.M)
-    assert macro
-    helpers.append(macro[0])
+                function(source, 'x87_native_binop'),
+                function(source, 'x87_native_sqrt')]
+    for name in ('BINOP', 'SQRT'):
+        macro = re.search(r'^#define X87_NATIVE_' + name + r'[^\n]*\\\n'
+                          r'(?:[^\n]*\\\n)*[^\n]*', source, re.M)
+        assert macro
+        helpers.append(macro[0])
     (out / 'helpers.inc').write_text('\n\n'.join(helpers) + '\n')
     (out / 'profile-core.inc').write_text(
         (ROOT / 'target/i386/tcg/fpu-profile.c').read_text())
+    (out / 'fpu-profile-reasons.h').write_text(
+        (ROOT / 'target/i386/tcg/fpu-profile-reasons.h').read_text())
     flags = [args.cc, '-std=gnu11', '-O2', '-g', '-Wall', '-Wextra',
              '-Wno-unused-function', '-Wno-unused-parameter', '-I' + str(out),
              '-I' + str(ROOT / 'target/i386/tcg'), '-pthread']
@@ -114,6 +118,34 @@ def main():
         print('PASS negative control: removed errno preservation rejected',
               flush=True)
         (out / 'profile-core.inc').write_text(original)
+        reason_path = out / 'fpu-profile-reasons.h'
+        reasons = reason_path.read_text()
+        mutants = [
+            ('wrong-PC24-label', reasons.replace(
+                'return pc == 0 ? XEMU_FPU_REJECT_PC24 :',
+                'return pc == 0 ? XEMU_FPU_REJECT_PC64 :', 1),
+             'reject[kind][expected]'),
+            ('arithmetic-reexecution', re.sub(
+                r'(xemu_fpu_profile_binop_reason\([^;{]*?\)\n\{)',
+                r'\1\n    uint64_t rl = 0; uint16_t rh = 0; bool inex = false;'
+                r'\n    (void)x87n_binop(op, a_low, a_high, b_low, b_high,'
+                r' &rl, &rh, &inex);', reasons, count=1),
+             'binary_attempts'),
+        ]
+        for label, mutant, expected in mutants:
+            assert mutant != reasons
+            reason_path.write_text(mutant)
+            binary = out / ('profile-negative-' + label)
+            run(flags + android + ['-DXEMU_ENABLE_CPU_PROFILE=1',
+                                   '-DEXPECT_PROFILE_ACTIVE=1', str(fixture),
+                                   '-lm', '-o', str(binary)])
+            result = subprocess.run(
+                [str(binary)], text=True, capture_output=True,
+                preexec_fn=lambda: resource.setrlimit(
+                    resource.RLIMIT_CORE, (0, 0)))
+            assert result.returncode != 0 and expected in result.stderr
+            print('PASS negative control:', label, 'rejected', flush=True)
+        reason_path.write_text(reasons)
     if args.benchmark:
         binary = out / 'profile-benchmark'
         bench_flags = [x for x in flags if not x.startswith('-fsanitize=')]

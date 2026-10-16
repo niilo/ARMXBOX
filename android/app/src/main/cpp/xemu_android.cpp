@@ -1094,8 +1094,8 @@ static SetupFiles SyncSetupFiles() {
 
   /* Configure before QEMU creates the vCPU; counters belong to each thread. */
   char cpu_profile_property[PROP_VALUE_MAX] = {};
-  bool cpu_profile_enabled =
-      GetPrefBool(env, activity, "setting_cpu_profile", false);
+  bool cpu_profile_enabled = XEMU_ENABLE_CPU_PROFILE &&
+      GetPrefBool(env, activity, "setting_cpu_profile_v2", true);
   if (__system_property_get("debug.xemu.cpu.profile",
                             cpu_profile_property) > 0 &&
       cpu_profile_property[0] == '0') {
@@ -1105,9 +1105,11 @@ static SetupFiles SyncSetupFiles() {
 #if defined(__aarch64__)
   __android_log_print(ANDROID_LOG_INFO, "xemu-cpu-mode",
                       "host=arm64 x87_storage=80bit x87_inline_fp=off "
-                      "native_x87_helpers=%s raw_x87_stack=%s helper_profile=%s",
+                      "native_x87_helpers=%s raw_x87_stack=%s "
+                      "x87_transfer=%s helper_profile=%s",
                       xemu_x87_native_helpers_enabled() ? "on" : "off",
                       XEMU_OPT_X87_STACK ? "on" : "off",
+                      XEMU_OPT_X87_TRANSFER ? "on" : "off",
                       xemu_fpu_profile_is_enabled() ? "sampled" : "off");
 #endif
 

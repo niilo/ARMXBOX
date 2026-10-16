@@ -1,4 +1,119 @@
-# X1 BOX 1.2.11 Pocket S RC12
+# X1 BOX 1.2.11 Pocket S RC13
+
+RC13 tests compact, exact ARM64 x87 load/store helper improvements using the
+normal RC11 CPU path as its reference. The RC12 raw-stack experiment defaults
+OFF. Both RC13 APKs retain RC8 rendering fixes, RC9 Vulkan command changes and
+RC10 audio work. They use the same test application, signing certificate and
+version code 39, allowing updates between these candidates without clearing
+app data. Pocket S game performance and visual/audio quality need device tests.
+
+## Normal and diagnostic APKs
+
+Normal RC13 compiles CPU profiling out entirely. Use it for the performance
+comparison against normal RC11. RC13 CPU Profile includes the same helper
+optimization plus detailed diagnostic counters and sampled timing; use it for
+a separate short diagnostic capture. Its instrumented FPS is not a clean
+performance control.
+
+The RC13 diagnostic switch defaults ON. It uses a new saved preference so an
+older normal build's saved false value does not suppress first-run diagnostics.
+An explicit disable in the diagnostic build and the developer force-off property
+remain respected. Normal Settings hides the switch and does not rewrite it.
+After changing it, save Settings and launch the game again. The startup line
+reports the actual active state as `helper_profile=sampled` or `off`, together
+with `raw_x87_stack=off` and the `x87_transfer` option.
+
+## Exact C-helper work
+
+The selected operations are float32/float64 loads to FT0 or ST0, and stores
+from ST0 to float32/float64. Existing softfloat normal/exact bit-packing cases
+already avoid the general conversion algorithm. RC13 moves those narrow,
+proven predicates into the surrounding C helpers so eligible calls can avoid
+FP-flag save/clear/merge work and conversion calls where present. ThinLTO already
+inlines the reference load conversions; the load benefit therefore concerns
+wrapper work rather than removing an inner call. The TCG helper call and
+guest-memory operation remain in place.
+
+Successful cases preserve full 80-bit payloads, prior floating flags, stack/TOP
+and tags, and existing pending-exception reconciliation. Ineligible encodings,
+values requiring rounding, ranges and precision modes follow the reference
+implementation. In particular, float64 loads at 24-bit precision retain the
+reference path. Native arithmetic eligibility, interrupts, synchronization,
+GPU workarounds and audio behavior are unchanged.
+
+The detailed companion counts individual load/store helpers and actual
+normal-exact, precision-rejected, non-normal/range-rejected or generic helper
+branches. A generic helper can still use an existing softfloat shortcut;
+these are branch/eligibility observations, not conversion CPU-time shares.
+Separate binary/sqrt rejection counters distinguish precision/rounding policy,
+operand encoding/representability/exponent and result rejection. The original
+arithmetic is evaluated once; diagnostic classification uses integer reads.
+Each rejected operation records its first prioritized reason, rather than every
+simultaneously failing condition. Normal builds compile the additional hooks
+and classification out. New records are `xemu-cpu-ls` and two `xemu-cpu-reject`
+lines, grouped with the original three records by process/thread/sequence.
+
+Sampled timings retain the existing one-per-1,024 category entries and at-least
+five-second reporting. Clock overhead, nested scopes, incomplete nonlocal exits
+and periodic sampling limit attribution. Thread CPU time describes the helper-
+executing host thread, including translated work and diagnostics, rather than
+the entire emulator. Do not extrapolate tiny samples into exact CPU shares.
+
+## Device comparison
+
+Use the same SSX 3 course, Turnip driver, 3x resolution, power/fan/audio settings
+and cache state. Start each normal run after a comparable cooldown; record any
+new visual or sound issue along with sustained gameplay FPS.
+
+1. Capture a normal RC11 reference run.
+2. Install normal RC13, cool to a comparable starting temperature and repeat.
+3. Install RC13 CPU Profile and capture 1-2 minutes of gameplay, including the
+   later section if convenient. Confirm profiling remains enabled in Settings.
+   Export this log separately from the performance comparison.
+
+The previous normal RC11/RC12 pair logged 30.84/28.97 settled FPS, but different
+starting temperatures and workload/pacing prevent a causal regression estimate.
+The active RC11 profile measured 42.3% load/store, 19.3% stack and 16.5%
+arithmetic among selected helper entries, with 61.6% binary-arithmetic fallback.
+Those are call proportions from an instrumented run, not CPU cost or a predicted
+RC13 FPS gain. RC14 arithmetic changes depend on the new rejection evidence.
+
+## Validation and tradeoffs
+
+GCC ASan/UBSan and Clang checks compare both transfer-option states against
+immutable RC11 helpers and the unchanged real softfloat implementation:
+2,781,337 state comparisons per option, including pending exceptions, all
+precision/rounding modes, edge encodings and seeded random inputs. Independent
+review repeats these checks and detects deliberately removed pending-status
+and PC24 guards. Only nonarchitectural floatx80 tail padding is normalized.
+Profiler checks cover compiled-out/instrumented modes, state/FENV/errno,
+single arithmetic evaluation, lazy counters, TLS, reporting and negative controls.
+
+The linked normal ThinLTO ELF reduces selected exact-load paths from
+47/51/55/59 to 35/38/44/47 ARM64 instructions. Reference loads already inline
+their conversions. Exact stores remove an inner conversion call and reduce the
+selected caller-plus-converter path from 67/68 to 31 instructions. These are
+static paths with no pending unmasked exception, not measured CPU cycles.
+Six helper bodies grow by 432 bytes; rejected paths add eligibility checks
+before their unchanged generic conversion. Device measurements must establish
+the net result. Normal helper code contains no profiling/reason references.
+
+Host fixtures use the relevant modeled CPU state; they do not execute Android,
+AArch64 instructions or real guest MMU faults. The APKs are built separately
+with assertions and ThinLTO, and their manifests record packaging and source
+verification. New Pocket S FPS, graphics and audio results remain unmeasured.
+
+## Rebuilding
+
+Normal Android Profile defaults are `xemu.rawX87Stack=false`,
+`xemu.x87Transfer=true` and `xemu.cpuProfileHooks=false`. These Gradle properties
+emit explicit CMake values, including OFF, so older native caches cannot silently
+select the RC12 stack path. For the companion, pass
+`-Pxemu.cpuProfileHooks=true`. A local reference compiler check can disable the
+new helper paths using `-Pxemu.x87Transfer=false`. Verify actual compile flags
+and APK identity; delivered manifests record the validated configuration.
+
+## Previous RC11 / RC12 CPU comparison
 
 RC11 is the CPU execution reference for this comparison. RC12 enables
 exact ARM64 x87 stack/register lowering. Both normal builds compile the new

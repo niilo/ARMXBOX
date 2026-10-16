@@ -7,9 +7,30 @@
 #include <android/log.h>
 #include <fenv.h>
 #include <time.h>
+#include "fpu-profile-reasons.h"
 
 bool xemu_fpu_profile_enabled;
 __thread XemuFpuProfileThread xemu_fpu_profile_thread;
+
+void xemu_fpu_profile_reject_binop(uint16_t fpuc, bool policy, int op,
+                                  uint64_t a_low, uint16_t a_high,
+                                  uint64_t b_low, uint16_t b_high)
+{
+    enum XemuFpuProfileRejectReason reason =
+        xemu_fpu_profile_binop_reason(fpuc, policy, op, a_low, a_high,
+                                      b_low, b_high);
+
+    xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_BINOP][reason]++;
+}
+
+void xemu_fpu_profile_reject_sqrt(uint16_t fpuc, bool policy,
+                                 uint64_t low, uint16_t high)
+{
+    enum XemuFpuProfileRejectReason reason =
+        xemu_fpu_profile_sqrt_reason(fpuc, policy, low, high);
+
+    xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_SQRT][reason]++;
+}
 
 static bool read_clocks(uint64_t *wall_ns, uint64_t *cpu_ns)
 {
@@ -35,6 +56,53 @@ void xemu_fpu_profile_sample_start(XemuFpuProfileScope *scope)
         t->interval_wall_ns = scope->wall_ns;
         t->interval_cpu_ns = scope->cpu_ns;
         t->anchored = true;
+    }
+}
+
+static void report_details(const XemuFpuProfileThread *t)
+{
+    static const char *const transfer_names[XEMU_FPU_LS_COUNT] = {
+        "fldsFT", "fldlFT", "fildlFT", "fldsST", "fldlST", "fildlST",
+        "fildllST", "fstsST", "fstlST", "fldtST", "fsttST", "fbldST",
+        "fbstST",
+    };
+    static const char *const reason_names[XEMU_FPU_REJECT_REASON_COUNT] = {
+        "pc24", "pc64", "pcRes", "rcDown", "rcUp", "rcZero", "policy",
+        "aDen", "aPseudo", "aUnnorm", "aInf", "aNaN", "aPrec", "aExpLo",
+        "aExpHi", "bDen", "bPseudo", "bUnnorm", "bInf", "bNaN", "bPrec",
+        "bExpLo", "bExpHi", "divZero", "sqrtNeg", "result", "badOp",
+    };
+    static const char *const kinds[XEMU_FPU_REJECT_KIND_COUNT] = {
+        "bin", "sqrt",
+    };
+    char buf[1536];
+    size_t pos = 0;
+
+    for (int i = 0; i < XEMU_FPU_LS_COUNT; i++) {
+        const uint64_t *p = t->totals.transfer[i];
+
+        pos += snprintf(buf + pos, sizeof(buf) - pos,
+                        " %s=%" PRIu64 "/%" PRIu64 "/%" PRIu64 "/%" PRIu64,
+                        transfer_names[i], p[XEMU_FPU_LS_NORMAL_EXACT_FAST],
+                        p[XEMU_FPU_LS_PRECISION_FALLBACK],
+                        p[XEMU_FPU_LS_NON_NORMAL_FALLBACK],
+                        p[XEMU_FPU_LS_GENERIC]);
+    }
+    __android_log_print(ANDROID_LOG_INFO, "xemu-cpu-ls",
+                        "seq=%" PRIu64 " v=2 paths="
+                        "normal_exact_fast/precision_fallback/"
+                        "non_normal_fallback/generic:%s",
+                        t->report_sequence, buf);
+    for (int kind = 0; kind < XEMU_FPU_REJECT_KIND_COUNT; kind++) {
+        pos = 0;
+        for (int i = 0; i < XEMU_FPU_REJECT_REASON_COUNT; i++) {
+            pos += snprintf(buf + pos, sizeof(buf) - pos,
+                            " %s=%" PRIu64, reason_names[i],
+                            t->totals.reject[kind][i]);
+        }
+        __android_log_print(ANDROID_LOG_INFO, "xemu-cpu-reject",
+                            "seq=%" PRIu64 " v=2 kind=%s first_reason:%s",
+                            t->report_sequence, kinds[kind], buf);
     }
 }
 
@@ -87,6 +155,7 @@ static void report_interval(XemuFpuProfileThread *t, uint64_t wall,
     __android_log_print(ANDROID_LOG_INFO, "xemu-cpu-sample",
                         "seq=%" PRIu64 " completed/wall_ns/thread_cpu_ns:%s",
                         t->report_sequence, times);
+    report_details(t);
     memset(s, 0, sizeof(*s));
     t->interval_wall_ns = wall;
     t->interval_cpu_ns = cpu;
