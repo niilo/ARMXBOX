@@ -4,12 +4,13 @@ Run from the repository root:
 
 ```sh
 python3 tests/xbox/fpu-profile/profile-test.py --sanitize --negative-control
-python3 tests/xbox/fpu-profile/profile-test.py --cc clang --negative-control
+python3 tests/xbox/fpu-profile/profile-test.py --cc clang-21 --negative-control
 ```
 
 `--output-dir` isolates concurrent fixture binaries. The runner executes three
 configurations: ordinary host stubs, Android/AArch64 with hooks compiled out,
-and the instrumented Android/AArch64 configuration. The active configuration
+and the instrumented Android/AArch64 configuration, each with the PC24 feature
+compiled off and on. The active configuration
 runs on the host with deterministic clock and Android-log boundaries; it is
 not execution on ARM hardware or against an Android audio/graphics driver.
 
@@ -40,11 +41,18 @@ Other checks cover:
   operand classes/exponent/significand limits, policy rejection, division zero,
   negative square root and result rejection; output, flags, FENV and errno agree
   between runtime-off and runtime-on profiling.
+- Actual PC24 wrappers with exact-f32 significand and exponent boundaries,
+  inconsistent softfloat precision/rounding, captured host-rounding rejection,
+  original policy and PC24 arithmetic attempts counted once, and no policy call
+  when softfloat state is inconsistent. Host execution checks `fegetround()`;
+  ARM64 FPCR trap/AH/FIZ bits need ARM execution and are not simulated here.
 - Complete maximum-width detail records with shared sequence and counter reset.
 
 Executable negative controls remove errno restoration, mislabel PC24 as PC64,
-and reexecute arithmetic in the reason classifier. The errno, reason and actual
-attempt-count oracles must reject them. Expected assertions have core dumps
+reexecute arithmetic in the reason classifier, use the PC53 precision mask for
+PC24 rejection, and mislabel captured host rejection as a softfloat-state
+rejection. The errno, reason and actual attempt-count oracles must reject them.
+Expected assertions have core dumps
 disabled. No installed binary, guest file or production source is modified.
 
 `--benchmark` additionally runs nine alternating host trials of original,
@@ -76,7 +84,7 @@ Reports use separate tags from the old translation counters:
   sampled host-thread CPU ns for each category.
 - `xemu-cpu-ls`: version 2 individual helper counters in the fixed order
   normal-exact-fast / precision-fallback / non-normal-fallback / generic.
-- Two `xemu-cpu-reject` records: version 2 first/prioritized rejection reasons
+- Two `xemu-cpu-reject` records: version 3 first/prioritized rejection reasons
   for binary arithmetic and square root, respectively.
 
 The original three records retain their fields. All six share the report
@@ -105,15 +113,28 @@ The generic/reference conversion can use preexisting softfloat exact-normal
 shortcuts. Do not label every fallback as slow software arithmetic. An inherited
 sticky exception flag does not determine these labels.
 
-Arithmetic reasons are exclusive and prioritized: guest PC24/PC64/reserved
-precision before non-nearest RCdown/up/zero, then policy off, first invalid
-operand A/B class or exact-53-bit/exponent eligibility, division zero or negative
-sqrt, then later result rejection. Class keys distinguish denormal,
-pseudo-denormal, unnormal, infinity and NaN. If PC and operands both fail, only
-the PC bucket increments; it does not prove the operands were eligible. Result
-rejection combines later result-range/class/underflow checks because the failed
-operation is not repeated and its unwritten output is not inspected. Compare
-and integer-conversion native outcomes retain coarse hit/fallback counts only.
+Arithmetic reasons are exclusive and prioritized. The original 27 field names
+retain their order; version 3 appends `pc24Env` and `hostEnv`. When the PC24
+feature is off, PC24/PC64/reserved precision precedes non-nearest RCdown/up/zero,
+then policy off, first invalid operand A/B class or exact-53-bit/exponent
+eligibility, division zero or negative sqrt, then later result rejection. When
+PC24 is enabled, the `pc24` bucket no longer masks failures at that precision:
+directed guest rounding reports RCdown/up/zero. Nearest-mode PC24 first checks
+that softfloat state also selects 24-bit precision and nearest rounding;
+`pc24Env` records a mismatch before native policy is evaluated. Policy rejection
+uses the existing `policy` bucket. Operands then require exact binary32 values
+with exponents in [-60, 60]; `aPrec`/`bPrec` and exponent reasons refer to those
+limits at PC24. An inadmissible host floating-point environment records
+`hostEnv` from the already captured arithmetic return status. Classification
+never reads the host control register again.
+
+Class keys distinguish denormal, pseudo-denormal, unnormal, infinity and NaN.
+Only the prioritized reason is counted; earlier rejection does not establish
+that later guards would have passed. Result rejection combines later
+result-range/class/underflow checks because the failed operation is not repeated
+and its unwritten output is not inspected. Native hit/fallback counts aggregate
+both PC53 and PC24; there is no separate PC24 timing or hit record. Compare and
+integer-conversion native outcomes retain coarse hit/fallback counts only.
 
 These are helper calls, not guest instruction counts. Register/constant helpers
 also contribute to the stack category; the six raw-stack candidates are a

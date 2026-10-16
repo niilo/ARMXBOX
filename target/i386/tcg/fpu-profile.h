@@ -99,6 +99,8 @@ enum XemuFpuProfileRejectReason {
     XEMU_FPU_REJECT_SQRT_NEGATIVE,
     XEMU_FPU_REJECT_RESULT,
     XEMU_FPU_REJECT_INVALID_OP,
+    XEMU_FPU_REJECT_PC24_ENV,
+    XEMU_FPU_REJECT_HOST_ENV,
     XEMU_FPU_REJECT_REASON_COUNT,
 };
 
@@ -148,11 +150,17 @@ extern bool xemu_fpu_profile_enabled;
 extern __thread XemuFpuProfileThread xemu_fpu_profile_thread;
 void xemu_fpu_profile_sample_start(XemuFpuProfileScope *scope);
 void xemu_fpu_profile_sample_end(XemuFpuProfileScope *scope);
-void xemu_fpu_profile_reject_binop(uint16_t fpuc, bool policy, int op,
+void xemu_fpu_profile_reject_binop(uint16_t fpuc, bool policy,
+                                  bool pc24_supported, int op,
                                   uint64_t a_low, uint16_t a_high,
                                   uint64_t b_low, uint16_t b_high);
 void xemu_fpu_profile_reject_sqrt(uint16_t fpuc, bool policy,
+                                 bool pc24_supported,
                                  uint64_t low, uint16_t high);
+void xemu_fpu_profile_reject_pc24_binop(int op,
+                                       uint64_t a_low, uint16_t a_high,
+                                       uint64_t b_low, uint16_t b_high);
+void xemu_fpu_profile_reject_pc24_sqrt(uint64_t low, uint16_t high);
 
 static inline XemuFpuProfileScope
 xemu_fpu_profile_begin(enum XemuFpuProfileCategory category)
@@ -212,13 +220,30 @@ xemu_fpu_profile_native_result(enum XemuFpuProfileNative kind, bool hit)
 } while (0)
 #define XEMU_FPU_PROFILE_REJECT_BINOP(fpuc, op, al, ah, bl, bh) do { \
     if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
-        xemu_fpu_profile_reject_binop((fpuc), xemu_fpu_policy, (op), \
+        xemu_fpu_profile_reject_binop((fpuc), xemu_fpu_policy, \
+                                     X87_NATIVE24_ACTIVE, (op), \
                                      (al), (ah), (bl), (bh)); \
     } \
 } while (0)
 #define XEMU_FPU_PROFILE_REJECT_SQRT(fpuc, low, high) do { \
     if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
-        xemu_fpu_profile_reject_sqrt((fpuc), xemu_fpu_policy, (low), (high)); \
+        xemu_fpu_profile_reject_sqrt((fpuc), xemu_fpu_policy, \
+                                    X87_NATIVE24_ACTIVE, (low), (high)); \
+    } \
+} while (0)
+#define XEMU_FPU_PROFILE_REJECT_DIRECT(kind, reason) do { \
+    if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
+        xemu_fpu_profile_thread.totals.reject[(kind)][(reason)]++; \
+    } \
+} while (0)
+#define XEMU_FPU_PROFILE_REJECT_PC24_BINOP(op, al, ah, bl, bh) do { \
+    if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
+        xemu_fpu_profile_reject_pc24_binop((op), (al), (ah), (bl), (bh)); \
+    } \
+} while (0)
+#define XEMU_FPU_PROFILE_REJECT_PC24_SQRT(low, high) do { \
+    if (__builtin_expect(xemu_fpu_profile_enabled, 0)) { \
+        xemu_fpu_profile_reject_pc24_sqrt((low), (high)); \
     } \
 } while (0)
 #else
@@ -229,6 +254,9 @@ xemu_fpu_profile_native_result(enum XemuFpuProfileNative kind, bool hit)
 #define XEMU_FPU_PROFILE_TRANSFER(helper, path) ((void)0)
 #define XEMU_FPU_PROFILE_REJECT_BINOP(fpuc, op, al, ah, bl, bh) ((void)0)
 #define XEMU_FPU_PROFILE_REJECT_SQRT(fpuc, low, high) ((void)0)
+#define XEMU_FPU_PROFILE_REJECT_DIRECT(kind, reason) ((void)0)
+#define XEMU_FPU_PROFILE_REJECT_PC24_BINOP(op, al, ah, bl, bh) ((void)0)
+#define XEMU_FPU_PROFILE_REJECT_PC24_SQRT(low, high) ((void)0)
 #endif
 
 #ifdef __cplusplus

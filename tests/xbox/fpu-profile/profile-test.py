@@ -61,7 +61,9 @@ def main():
     names = ['helper_fpush', 'helper_fpop', 'helper_fmov_FT0_STN',
              'helper_fmov_ST0_STN', 'helper_fmov_STN_ST0',
              'helper_fxchg_ST0_STN']
-    helpers = [function(source, 'fpush'), function(source, 'fpop')]
+    gate = source[source.index('#ifndef XEMU_OPT_X87_PC24'):
+                  source.index('#define FPU_RC_SHIFT')]
+    helpers = [gate, function(source, 'fpush'), function(source, 'fpop')]
     for name in names:
         original = function(old, name).replace(name, 'orig_' + name)
         current = function(source, name)
@@ -98,10 +100,13 @@ def main():
                (android + ['-DXEMU_ENABLE_CPU_PROFILE=1'],
                 'android-instrumented', True)]
     for defines, name, active in configs:
-        binary = out / name
-        run(flags + defines + ['-DEXPECT_PROFILE_ACTIVE=' + str(int(active)),
-                               str(fixture), '-lm', '-o', str(binary)])
-        run([str(binary)])
+        for pc24 in (0, 1):
+            binary = out / (name + '-pc24-' + str(pc24))
+            run(flags + defines + ['-DXEMU_OPT_X87_PC24=' + str(pc24),
+                                   '-DEXPECT_PROFILE_ACTIVE=' +
+                                   str(int(active)), str(fixture), '-lm',
+                                   '-o', str(binary)])
+            run([str(binary)])
     if args.negative_control:
         original = (out / 'profile-core.inc').read_text()
         bad = original.replace('errno = saved_errno;', '(void)saved_errno;')
@@ -146,6 +151,34 @@ def main():
             assert result.returncode != 0 and expected in result.stderr
             print('PASS negative control:', label, 'rejected', flush=True)
         reason_path.write_text(reasons)
+        helper_path = out / 'helpers.inc'
+        helper_text = helper_path.read_text()
+        pc24_mutants = [
+            ('wrong-PC24-precision', reason_path, reasons.replace(
+                'low, high, right, X87N24_DISCARDED_MASK, X87N24_EXP_LIMIT',
+                'low, high, right, 0x7ff, X87N24_EXP_LIMIT', 1),
+             'reject[kind][expected]'),
+            ('wrong-host-environment-label', helper_path,
+             helper_text.replace('XEMU_FPU_REJECT_HOST_ENV',
+                                 'XEMU_FPU_REJECT_PC24_ENV'),
+             'reject[kind][expected]'),
+        ]
+        for label, path, mutant, expected in pc24_mutants:
+            original = path.read_text()
+            assert mutant != original
+            path.write_text(mutant)
+            binary = out / ('profile-negative-' + label)
+            run(flags + android + ['-DXEMU_ENABLE_CPU_PROFILE=1',
+                                   '-DXEMU_OPT_X87_PC24=1',
+                                   '-DEXPECT_PROFILE_ACTIVE=1', str(fixture),
+                                   '-lm', '-o', str(binary)])
+            result = subprocess.run(
+                [str(binary)], text=True, capture_output=True,
+                preexec_fn=lambda: resource.setrlimit(
+                    resource.RLIMIT_CORE, (0, 0)))
+            assert result.returncode != 0 and expected in result.stderr
+            print('PASS negative control:', label, 'rejected', flush=True)
+            path.write_text(original)
     if args.benchmark:
         binary = out / 'profile-benchmark'
         bench_flags = [x for x in flags if not x.startswith('-fsanitize=')]

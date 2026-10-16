@@ -1,4 +1,124 @@
-# X1 BOX 1.2.11 Pocket S RC13
+# X1 BOX 1.2.11 Pocket S RC14
+
+RC14 tests guarded native arithmetic for the 24-bit x87 precision mode observed
+in SSX 3. It also provides explicit CPU experiment controls, since normal RC13
+averaged 26.28 FPS versus an earlier RC11 run's 30.84 FPS. Those single captures
+had different pacing/workload and do not isolate the cause. Device testing must
+establish the new arithmetic path's actual coverage and performance.
+
+## Three normal APKs
+
+| Build | PC24 arithmetic | RC13 transfer optimization | Purpose |
+| --- | --- | --- | --- |
+| RC14 Control | Off | Off | Restore the RC11 CPU helper path as a fresh control. |
+| RC14 | On | Off | Isolate the new arithmetic path. Start here after the control. |
+| RC14 Combined | On | On | Measure the transfer optimization alongside the new path. |
+
+All three use full 80-bit x87 registers, raw-stack lowering OFF, and CPU
+profiling compiled out. The RC8 rendering fixes, RC9 Vulkan work and RC10 audio
+code are retained. Their application ID, signing certificate and version code
+39 match previous X1 BOX Test candidates; install normally without clearing data.
+The version names identify each build. No new diagnostic APK is required for
+this initial performance comparison.
+
+## Arithmetic contract
+
+The new path requires guest PC24 and round-to-nearest, matching softfloat
+precision/rounding state, and the existing native policy. It accepts signed zero
+and ordinary operands already exactly representable with 24 significand bits,
+with nonzero unbiased exponents between -60 and +60. It never rounds operands
+to make them eligible. The host FPCR must use nearest rounding and masked
+exception traps; alternate-handling/input-flush controls are conservatively
+rejected. Bounds keep admitted inputs/results and exactness checks clear of
+subnormal/overflow behavior, including when ordinary flush-to-zero is enabled.
+
+Addition, subtraction, multiplication, division and square root compute at
+binary32 precision, giving the guest-requested single rounding. Separate
+binary64 checks recover the guest inexact flag exactly for this bounded subset.
+All remaining cases use the existing implementation, including wider
+significands/exponents, incompatible modes, special encodings and policy OFF.
+The current PC53 implementation remains in place.
+
+Success preserves full 80-bit state and old sticky flags, and reconciles
+preexisting unmasked pending exceptions even for an exact result. Rejection
+leaves outputs untouched. Translator/helper boundaries, guest memory ordering,
+interrupts, GPU synchronization and audio behavior are unchanged.
+Accepted native operations can raise host hardware sticky flags, as existing
+native arithmetic does; they preserve host rounding and errno. The mathematical
+and independent reports state the host-environment and execution limits.
+
+## Why this target
+
+The RC13 profiling capture provides 20 complete gameplay intervals. Its new
+transfer branches handle 80.58% of x87 load/store entries, confirming frequent
+use. Binary arithmetic falls back on 60.82% of attempts; PC24 is the first
+blocking guard for 99.9738% of those fallbacks. Every recorded gameplay square
+root also falls back on that guard. These are call counts and first rejection
+reasons, leaving operation cost and eligibility under the new guards unmeasured.
+PC24 rejection happens before operand tests, so it does not establish that every
+one of those operations can be accelerated.
+
+## Device comparison
+
+Use the same SSX 3 course at 3x, Turnip driver, cache state, power/fan mode,
+charging state and sound settings. Cool to comparable starting temperatures.
+
+1. Run RC14 Control and export a full log, including later gameplay.
+2. Run RC14 after cooling and repeat the route. This pair isolates PC24.
+3. Run RC14 Combined after cooling. Compare against RC14 to isolate transfers.
+
+Startup should show `raw_x87_stack=off helper_profile=off` with the intervening
+`x87_transfer` and `x87_pc24` values matching the table. Record sustained FPS,
+vertex/texture popping, sound changes and temperatures. Repeat a promising pair
+if the difference is small. Normal RC11 remains an optional historical control.
+No RC14 FPS gain, 60 FPS result or visual/audio result is established in cloud.
+Adaptive VBLANK/unlock behavior has not been forced or retuned.
+
+## Build controls and diagnostics
+
+Normal Android defaults are `xemu.x87Pc24=true`, `xemu.x87Transfer=false`,
+`xemu.rawX87Stack=false` and `xemu.cpuProfileHooks=false`. All become explicit
+CMake ON/OFF values. Build Control with `-Pxemu.x87Pc24=false`; build Combined
+with `-Pxemu.x87Transfer=true`. The build manifest verifies actual compile flags,
+source identities, dependencies and APK identity for each variant.
+
+The existing profiling companion can still be compiled separately. Its six-record
+format retains old counters; rejection records use v=3 and append `pc24Env` and
+`hostEnv` to distinguish softfloat-state and captured host-environment rejections.
+PC24 operand rejection now uses its actual 24-bit/range guards. Diagnostics never
+retry arithmetic or re-read FPCR to classify the captured result. Normal builds
+erase these hooks. Existing diagnostic settings and default-on behavior remain.
+
+## Validation and tradeoffs
+
+The real unchanged softfloat implementation and immutable RC13 helpers are the
+numerical and state reference. Each of four feature/policy combinations passes
+1,774,436 modeled state comparisons and 1,774,469 direct numerical/rejection
+checks with GCC ASan/UBSan and Clang; an independent reviewer repeats both
+compiler matrices. Coverage includes all precision/rounding modes, old sticky
+flags, pending exceptions, aliases, special encodings, cancellation, midpoint
+neighbors and randomized states. Four semantic negative controls detect broken
+admission, double rounding, inexact flags and pending-exception reconciliation.
+Separate profiler tests cover enabled/compiled-out modes and five negative
+controls, preserving the existing report fields and avoiding arithmetic retries.
+
+The packaged ARM64 ThinLTO review verifies the FPCR success guard dominates the
+new single-precision arithmetic and double exactness checks. Square root uses
+inline hardware FSQRT; normal builds contain no profiler symbols. The shared
+binary wrapper grows from 696 to 1,332 bytes and the square-root helper from
+644 to 1,056 bytes, adding 1,048 bytes in total. The other twelve arithmetic
+helper sizes remain unchanged. These are static function sizes, not CPU-cycle
+measurements. Unsupported inputs pay extra guard checks before falling back.
+
+All three APKs have separately verified source hashes, actual compile options,
+dependency pins, manifest/signature, ARM64 library alignment and native dependency
+closure. Host fixtures model helper state; they do not execute ARM FPCR, Android
+lifecycle, guest MMU faults or games. Device testing remains necessary for
+eligibility, sustained FPS, thermal behavior and rendering/audio quality.
+
+## Previous RC13
+
+### X1 BOX 1.2.11 Pocket S RC13
 
 RC13 tests compact, exact ARM64 x87 load/store helper improvements using the
 normal RC11 CPU path as its reference. The RC12 raw-stack experiment defaults

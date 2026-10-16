@@ -12,22 +12,43 @@
 bool xemu_fpu_profile_enabled;
 __thread XemuFpuProfileThread xemu_fpu_profile_thread;
 
-void xemu_fpu_profile_reject_binop(uint16_t fpuc, bool policy, int op,
+void xemu_fpu_profile_reject_binop(uint16_t fpuc, bool policy,
+                                  bool pc24_supported, int op,
                                   uint64_t a_low, uint16_t a_high,
                                   uint64_t b_low, uint16_t b_high)
 {
     enum XemuFpuProfileRejectReason reason =
-        xemu_fpu_profile_binop_reason(fpuc, policy, op, a_low, a_high,
+        xemu_fpu_profile_binop_reason(fpuc, policy, pc24_supported, op,
+                                      a_low, a_high,
                                       b_low, b_high);
 
     xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_BINOP][reason]++;
 }
 
 void xemu_fpu_profile_reject_sqrt(uint16_t fpuc, bool policy,
+                                 bool pc24_supported,
                                  uint64_t low, uint16_t high)
 {
     enum XemuFpuProfileRejectReason reason =
-        xemu_fpu_profile_sqrt_reason(fpuc, policy, low, high);
+        xemu_fpu_profile_sqrt_reason(fpuc, policy, pc24_supported, low, high);
+
+    xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_SQRT][reason]++;
+}
+
+void xemu_fpu_profile_reject_pc24_binop(int op,
+                                       uint64_t a_low, uint16_t a_high,
+                                       uint64_t b_low, uint16_t b_high)
+{
+    enum XemuFpuProfileRejectReason reason =
+        xemu_fpu_profile_pc24_binop_reason(op, a_low, a_high, b_low, b_high);
+
+    xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_BINOP][reason]++;
+}
+
+void xemu_fpu_profile_reject_pc24_sqrt(uint64_t low, uint16_t high)
+{
+    enum XemuFpuProfileRejectReason reason =
+        xemu_fpu_profile_pc24_sqrt_reason(low, high);
 
     xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_SQRT][reason]++;
 }
@@ -71,6 +92,7 @@ static void report_details(const XemuFpuProfileThread *t)
         "aDen", "aPseudo", "aUnnorm", "aInf", "aNaN", "aPrec", "aExpLo",
         "aExpHi", "bDen", "bPseudo", "bUnnorm", "bInf", "bNaN", "bPrec",
         "bExpLo", "bExpHi", "divZero", "sqrtNeg", "result", "badOp",
+        "pc24Env", "hostEnv",
     };
     static const char *const kinds[XEMU_FPU_REJECT_KIND_COUNT] = {
         "bin", "sqrt",
@@ -101,7 +123,7 @@ static void report_details(const XemuFpuProfileThread *t)
                             t->totals.reject[kind][i]);
         }
         __android_log_print(ANDROID_LOG_INFO, "xemu-cpu-reject",
-                            "seq=%" PRIu64 " v=2 kind=%s first_reason:%s",
+                            "seq=%" PRIu64 " v=3 kind=%s first_reason:%s",
                             t->report_sequence, kinds[kind], buf);
     }
 }

@@ -21,8 +21,14 @@
 #include "x87-native.h"
 #undef x87n_binop
 #undef x87n_sqrt
+#define x87n24_binop test_x87n24_binop_impl
+#define x87n24_sqrt test_x87n24_sqrt_impl
+#include "x87-native24.h"
+#undef x87n24_binop
+#undef x87n24_sqrt
 
 static unsigned binary_attempts, sqrt_attempts, policy_calls;
+static unsigned binary24_attempts, sqrt24_attempts;
 static bool x87n_binop(int op, uint64_t al, uint16_t ah,
                        uint64_t bl, uint16_t bh, uint64_t *rl,
                        uint16_t *rh, bool *inexact)
@@ -36,6 +42,22 @@ static bool x87n_sqrt(uint64_t low, uint16_t high, uint64_t *rl,
 {
     sqrt_attempts++;
     return test_x87n_sqrt_impl(low, high, rl, rh, inexact);
+}
+
+static enum X87Native24Result
+x87n24_binop(int op, uint64_t al, uint16_t ah, uint64_t bl, uint16_t bh,
+            uint64_t *rl, uint16_t *rh, bool *inexact)
+{
+    binary24_attempts++;
+    return test_x87n24_binop_impl(op, al, ah, bl, bh, rl, rh, inexact);
+}
+
+static enum X87Native24Result
+x87n24_sqrt(uint64_t low, uint16_t high, uint64_t *rl, uint16_t *rh,
+           bool *inexact)
+{
+    sqrt24_attempts++;
+    return test_x87n24_sqrt_impl(low, high, rl, rh, inexact);
 }
 
 typedef struct TestClock {
@@ -96,7 +118,23 @@ typedef struct TestFloat80 {
 typedef uint32_t float32;
 typedef struct TestFloatStatus {
     int flags;
+    int floatx80_rounding_precision;
+    int float_rounding_mode;
 } float_status;
+enum {
+    floatx80_precision_x,
+    floatx80_precision_d,
+    floatx80_precision_s,
+};
+enum { float_round_nearest_even };
+static int get_floatx80_rounding_precision(const float_status *s)
+{
+    return s->floatx80_rounding_precision;
+}
+static int get_float_rounding_mode(const float_status *s)
+{
+    return s->float_rounding_mode;
+}
 typedef struct TestFpuRegister {
     floatx80 d;
 } TestFpuRegister;
@@ -154,6 +192,7 @@ static void seed(CPUX86State *env)
     memset(env, 0, sizeof(*env));
     env->fpstt = 5;
     env->fpuc = X87N_FPUC_MODE;
+    env->fp_status.floatx80_rounding_precision = floatx80_precision_d;
     for (int i = 0; i < 8; i++) {
         env->fpregs[i].d.low = UINT64_C(0x8000000000000000) + i;
         env->fpregs[i].d.high = 0x3fff + i;
@@ -206,6 +245,7 @@ static void check_helper_state(void)
 static void check_lazy_detail_hooks(void)
 {
     unsigned helper_evals = 0, path_evals = 0, argument_evals = 0;
+    unsigned kind_evals = 0, reason_evals = 0;
     XEMU_FPU_PROFILE_POLICY_STATE;
 
     xemu_fpu_profile_init(false);
@@ -214,7 +254,12 @@ static void check_lazy_detail_hooks(void)
     XEMU_FPU_PROFILE_REJECT_BINOP((argument_evals++, 0x200), 0,
                                   0, 0, 0, 0);
     XEMU_FPU_PROFILE_REJECT_SQRT((argument_evals++, 0x200), 0, 0);
+    XEMU_FPU_PROFILE_REJECT_DIRECT((kind_evals++, XEMU_FPU_REJECT_BINOP),
+                                   (reason_evals++, XEMU_FPU_REJECT_HOST_ENV));
+    XEMU_FPU_PROFILE_REJECT_PC24_BINOP((argument_evals++, 0), 0, 0, 0, 0);
+    XEMU_FPU_PROFILE_REJECT_PC24_SQRT((argument_evals++, 0), 0);
     assert(!helper_evals && !path_evals && !argument_evals);
+    assert(!kind_evals && !reason_evals);
     assert(XEMU_FPU_PROFILE_POLICY((argument_evals++, true)));
     assert(argument_evals == 1); /* original policy expression still runs */
 }
@@ -279,6 +324,7 @@ static void check_native_outcomes(void)
 static void check_transfer_cells(void)
 {
     unsigned helper_evals = 0, path_evals = 0;
+    unsigned kind_evals = 0, reason_evals = 0;
 
     reset_test();
     for (int i = 0; i < XEMU_FPU_LS_COUNT; i++) {
@@ -293,46 +339,69 @@ static void check_transfer_cells(void)
     }
     assert(helper_evals == XEMU_FPU_LS_COUNT * 10);
     assert(path_evals == helper_evals);
+    XEMU_FPU_PROFILE_REJECT_DIRECT((kind_evals++, XEMU_FPU_REJECT_SQRT),
+                                   (reason_evals++, XEMU_FPU_REJECT_PC24_ENV));
+    assert(kind_evals == 1 && reason_evals == 1);
+    assert(xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_SQRT]
+           [XEMU_FPU_REJECT_PC24_ENV] == 1);
     assert(!test_clock.reads && !reports); /* no extra timing from details */
 }
 
-static void check_rejected_case(enum XemuFpuProfileRejectKind kind,
-                                uint16_t fpuc, bool policy, int op,
-                                floatx80 a, floatx80 b,
-                                enum XemuFpuProfileRejectReason expected)
+static void check_rejected_status_case(enum XemuFpuProfileRejectKind kind,
+                                       uint16_t fpuc, bool policy, int op,
+                                       floatx80 a, floatx80 b, int bad_status,
+                                       enum XemuFpuProfileRejectReason expected)
 {
     CPUX86State env_storage, *env = &env_storage;
     floatx80 reference = { 0 };
     uint16_t reference_fpus = 0;
     int reference_flags = 0, reference_fenv = 0, reference_errno = 0;
+    int reference_round = 0;
     bool reference_hit = false;
 
     for (int enabled = 0; enabled <= 1; enabled++) {
         floatx80 out = kind == XEMU_FPU_REJECT_SQRT ? a : b;
         bool hit;
-        unsigned expected_policy = (fpuc & 0xf00) == 0x200;
+        bool pc53 = (fpuc & 0xf00) == 0x200;
+        bool pc24 = X87_NATIVE24_ACTIVE && !(fpuc & 0xf00);
+        unsigned expected_policy = pc53 || (pc24 && !bad_status);
 
         reset_test();
         xemu_fpu_profile_init(enabled);
         seed(env);
         env->fpuc = fpuc;
+        env->fp_status.floatx80_rounding_precision =
+            pc24 ? floatx80_precision_s : floatx80_precision_d;
+        if (bad_status == 1) {
+            env->fp_status.floatx80_rounding_precision = floatx80_precision_d;
+        } else if (bad_status == 2) {
+            env->fp_status.float_rounding_mode = 1;
+        }
         native_policy = policy;
         binary_attempts = sqrt_attempts = policy_calls = 0;
+        binary24_attempts = sqrt24_attempts = 0;
         feclearexcept(FE_ALL_EXCEPT);
         errno = EDOM;
         hit = kind == XEMU_FPU_REJECT_BINOP ?
               X87_NATIVE_BINOP(op, a, b, &out) : X87_NATIVE_SQRT(&out);
         assert(policy_calls == expected_policy);
         assert(binary_attempts == (unsigned)(kind == XEMU_FPU_REJECT_BINOP &&
-                                            expected_policy && policy));
+                                            pc53 && policy));
         assert(sqrt_attempts == (unsigned)(kind == XEMU_FPU_REJECT_SQRT &&
-                                          expected_policy && policy));
+                                          pc53 && policy));
+        assert(binary24_attempts ==
+               (unsigned)(kind == XEMU_FPU_REJECT_BINOP && pc24 &&
+                          expected_policy && policy));
+        assert(sqrt24_attempts ==
+               (unsigned)(kind == XEMU_FPU_REJECT_SQRT && pc24 &&
+                          expected_policy && policy));
         assert(hit == (expected == XEMU_FPU_REJECT_REASON_COUNT));
         if (!enabled) {
             reference = out;
             reference_fpus = env->fpus;
             reference_flags = env->fp_status.flags;
             reference_fenv = fetestexcept(FE_ALL_EXCEPT);
+            reference_round = fegetround();
             reference_errno = errno;
             reference_hit = hit;
         } else {
@@ -342,6 +411,7 @@ static void check_rejected_case(enum XemuFpuProfileRejectKind kind,
             assert(env->fpus == reference_fpus);
             assert(env->fp_status.flags == reference_flags);
             assert(fetestexcept(FE_ALL_EXCEPT) == reference_fenv);
+            assert(fegetround() == reference_round);
             assert(errno == reference_errno && hit == reference_hit);
             for (int i = 0; i < XEMU_FPU_REJECT_REASON_COUNT; i++) {
                 reasons += xemu_fpu_profile_thread.totals.reject[kind][i];
@@ -358,6 +428,14 @@ static void check_rejected_case(enum XemuFpuProfileRejectKind kind,
         assert(!test_clock.reads && !reports);
     }
     native_policy = true;
+}
+
+static void check_rejected_case(enum XemuFpuProfileRejectKind kind,
+                                uint16_t fpuc, bool policy, int op,
+                                floatx80 a, floatx80 b,
+                                enum XemuFpuProfileRejectReason expected)
+{
+    check_rejected_status_case(kind, fpuc, policy, op, a, b, 0, expected);
 }
 
 static void check_rejection_reasons(void)
@@ -387,10 +465,11 @@ static void check_rejection_reasons(void)
         for (unsigned pc = 0; pc < 4; pc++) {
             for (unsigned rc = 0; rc < 4; rc++) {
                 enum XemuFpuProfileRejectReason expected =
-                    pc == 0 ? XEMU_FPU_REJECT_PC24 :
+                    pc == 0 && !X87_NATIVE24_ACTIVE ? XEMU_FPU_REJECT_PC24 :
                     pc == 1 ? XEMU_FPU_REJECT_PC_RESERVED :
                     pc == 3 ? XEMU_FPU_REJECT_PC64 :
                     rc ? XEMU_FPU_REJECT_ROUND_DOWN + rc - 1 :
+                    pc == 0 && h ? XEMU_FPU_REJECT_HOST_ENV :
                          XEMU_FPU_REJECT_REASON_COUNT;
 
                 check_rejected_case(XEMU_FPU_REJECT_BINOP,
@@ -435,6 +514,84 @@ static void check_rejection_reasons(void)
     feclearexcept(FE_ALL_EXCEPT);
 }
 
+static void check_pc24_rejection_reasons(void)
+{
+    const floatx80 one = { UINT64_C(0x8000000000000000), 0x3fff };
+    const floatx80 zero = { 0, 0 };
+    const floatx80 negative_zero = { 0, 0x8000 };
+    const floatx80 negative = { UINT64_C(0x8000000000000000), 0xbfff };
+    const floatx80 rejected[] = {
+        { 1, 0 },
+        { UINT64_C(0x8000000000000000), 0 },
+        { 1, 0x3fff },
+        { UINT64_C(0x8000000000000000), 0x7fff },
+        { UINT64_C(0xc000000000000000), 0x7fff },
+        { UINT64_C(0x8000008000000000), 0x3fff },
+        { UINT64_C(0x8000000000000000), 16383 - 61 },
+        { UINT64_C(0x8000000000000000), 16383 + 61 },
+    };
+    const floatx80 accepted[] = {
+        { 0, 0 },
+        { 0, 0x8000 },
+        { UINT64_C(0x8000000000000000), 16383 - 60 },
+        { UINT64_C(0xffffff0000000000), 16383 + 60 },
+        { UINT64_C(0x8000010000000000), 0x3fff },
+    };
+    const int host_rounding[] = {
+        FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO,
+    };
+
+    if (!X87_NATIVE24_ACTIVE) {
+        return;
+    }
+    for (int h = 0; h < 4; h++) {
+        enum XemuFpuProfileRejectReason ordinary =
+            h ? XEMU_FPU_REJECT_HOST_ENV : XEMU_FPU_REJECT_REASON_COUNT;
+
+        assert(fesetround(host_rounding[h]) == 0);
+        for (unsigned i = 0; i < sizeof(rejected) / sizeof(rejected[0]); i++) {
+            check_rejected_case(XEMU_FPU_REJECT_BINOP, 0, true,
+                                X87N_ADD, rejected[i], one,
+                                XEMU_FPU_REJECT_A_DENORMAL + i);
+            check_rejected_case(XEMU_FPU_REJECT_BINOP, 0, true,
+                                X87N_ADD, one, rejected[i],
+                                XEMU_FPU_REJECT_B_DENORMAL + i);
+            check_rejected_case(XEMU_FPU_REJECT_SQRT, 0, true,
+                                0, rejected[i], zero,
+                                XEMU_FPU_REJECT_A_DENORMAL + i);
+        }
+        for (unsigned i = 0; i < sizeof(accepted) / sizeof(accepted[0]); i++) {
+            check_rejected_case(XEMU_FPU_REJECT_BINOP, 0, true,
+                                X87N_ADD, accepted[i], one, ordinary);
+            check_rejected_case(XEMU_FPU_REJECT_SQRT, 0, true,
+                                0, accepted[i], zero, ordinary);
+        }
+        for (int kind = 0; kind < XEMU_FPU_REJECT_KIND_COUNT; kind++) {
+            for (int bad_status = 1; bad_status <= 2; bad_status++) {
+                check_rejected_status_case(kind, 0, false, X87N_ADD,
+                                           one, one, bad_status,
+                                           XEMU_FPU_REJECT_PC24_ENV);
+                check_rejected_status_case(kind, 0, true, X87N_ADD,
+                                           one, one, bad_status,
+                                           XEMU_FPU_REJECT_PC24_ENV);
+            }
+            check_rejected_case(kind, 0, false, X87N_ADD, one, one,
+                                XEMU_FPU_REJECT_POLICY_OFF);
+        }
+        check_rejected_case(XEMU_FPU_REJECT_BINOP, 0, true,
+                            X87N_DIV, one, negative_zero,
+                            XEMU_FPU_REJECT_DIV_ZERO);
+        check_rejected_case(XEMU_FPU_REJECT_BINOP, 0, true,
+                            99, one, one, XEMU_FPU_REJECT_INVALID_OP);
+        check_rejected_case(XEMU_FPU_REJECT_SQRT, 0, true,
+                            0, negative, zero, XEMU_FPU_REJECT_SQRT_NEGATIVE);
+        check_rejected_case(XEMU_FPU_REJECT_SQRT, 0, true,
+                            0, negative_zero, zero, ordinary);
+    }
+    fesetround(FE_TONEAREST);
+    feclearexcept(FE_ALL_EXCEPT);
+}
+
 static void check_detail_report_bounds(void)
 {
     reset_test();
@@ -458,8 +615,11 @@ static void check_detail_report_bounds(void)
                   "18446744073709551615"));
     assert(strstr(messages[4], "kind=bin"));
     assert(strstr(messages[5], "kind=sqrt"));
+    assert(strstr(messages[4], "v=3"));
     assert(strstr(messages[4], "badOp=18446744073709551615"));
     assert(strstr(messages[5], "badOp=18446744073709551615"));
+    assert(strstr(messages[4], "pc24Env=18446744073709551615"));
+    assert(strstr(messages[5], "hostEnv=18446744073709551615"));
     for (int i = 0; i < XEMU_FPU_LS_COUNT; i++) {
         for (int j = 0; j < XEMU_FPU_LS_PATH_COUNT; j++) {
             assert(!xemu_fpu_profile_thread.totals.transfer[i][j]);
@@ -543,13 +703,13 @@ static void check_nonlocal_and_clock_failure(void)
 static void *thread_test(void *arg)
 {
     unsigned n = (uintptr_t)arg;
-    XEMU_FPU_PROFILE_POLICY_STATE;
 
     test_clock = (TestClock) { .wall = 1, .cpu = 1 };
     for (unsigned i = 0; i < n; i++) {
         empty_scope();
         XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_FT0, XEMU_FPU_LS_GENERIC);
-        XEMU_FPU_PROFILE_REJECT_BINOP(0, X87N_ADD, 0, 0, 0, 0);
+        XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
+                                       XEMU_FPU_REJECT_PC24_ENV);
     }
     assert(xemu_fpu_profile_thread.totals.entries[XEMU_FPU_X87_OTHER] == n);
     assert(xemu_fpu_profile_thread.totals.samples[XEMU_FPU_X87_OTHER] == 1);
@@ -557,7 +717,7 @@ static void *thread_test(void *arg)
     assert(xemu_fpu_profile_thread.totals.transfer[XEMU_FPU_LS_FLDS_FT0]
            [XEMU_FPU_LS_GENERIC] == n);
     assert(xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_BINOP]
-           [XEMU_FPU_REJECT_PC24] == n);
+           [XEMU_FPU_REJECT_PC24_ENV] == n);
     return NULL;
 }
 
@@ -573,7 +733,7 @@ static void check_threads(void)
     assert(!xemu_fpu_profile_thread.totals.transfer[XEMU_FPU_LS_FLDS_FT0]
            [XEMU_FPU_LS_GENERIC]);
     assert(!xemu_fpu_profile_thread.totals.reject[XEMU_FPU_REJECT_BINOP]
-           [XEMU_FPU_REJECT_PC24]);
+           [XEMU_FPU_REJECT_PC24_ENV]);
     assert(!test_clock.reads && !reports);
 }
 #endif
@@ -652,6 +812,7 @@ int main(int argc, char **argv)
     check_native_outcomes();
     check_transfer_cells();
     check_rejection_reasons();
+    check_pc24_rejection_reasons();
     check_detail_report_bounds();
     check_report_and_fenv();
     check_nonlocal_and_clock_failure();

@@ -59,6 +59,17 @@
 #define X87_TRANSFER_ACTIVE 0
 #endif
 
+#ifndef XEMU_OPT_X87_PC24
+#define XEMU_OPT_X87_PC24 0
+#endif
+
+#if defined(XBOX) && defined(__aarch64__) && !defined(USE_HARD_FPU) && \
+    !USE_NATIVE_DOUBLE_STORAGE && XEMU_OPT_X87_PC24
+#define X87_NATIVE24_ACTIVE 1
+#else
+#define X87_NATIVE24_ACTIVE 0
+#endif
+
 #define FPU_RC_SHIFT        10
 #define FPU_RC_MASK         (3 << FPU_RC_SHIFT)
 #define FPU_RC_NEAR         0x000
@@ -720,6 +731,9 @@ static void merge_exception_flags(CPUX86State *env, int old_flags)
 
 #if !USE_NATIVE_DOUBLE_STORAGE && !defined(USE_HARD_FPU)
 #include "x87-native.h"
+#if X87_NATIVE24_ACTIVE
+#include "x87-native24.h"
+#endif
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
@@ -770,6 +784,44 @@ static inline bool x87_native_binop(CPUX86State *env, int op, floatx80 a,
     bool inexact;
     XEMU_FPU_PROFILE_POLICY_STATE;
 
+#if X87_NATIVE24_ACTIVE
+    if (!(env->fpuc & X87N_FPUC_MASK)) {
+        enum X87Native24Result result;
+
+        if (get_floatx80_rounding_precision(&env->fp_status) !=
+                floatx80_precision_s ||
+            get_float_rounding_mode(&env->fp_status) !=
+                float_round_nearest_even) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
+                                           XEMU_FPU_REJECT_PC24_ENV);
+            return false;
+        }
+        if (!XEMU_FPU_PROFILE_POLICY(x87_native_enabled())) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
+                                           XEMU_FPU_REJECT_POLICY_OFF);
+            return false;
+        }
+        result = x87n24_binop(op, a.low, a.high, b.low, b.high,
+                             &r->low, &r->high, &inexact);
+        if (result != X87N24_HIT) {
+            if (result == X87N24_REJECT_HOST) {
+                XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
+                                               XEMU_FPU_REJECT_HOST_ENV);
+            } else {
+                XEMU_FPU_PROFILE_REJECT_PC24_BINOP(op, a.low, a.high,
+                                                  b.low, b.high);
+            }
+            return false;
+        }
+        if (inexact) {
+            float_raise(float_flag_inexact, &env->fp_status);
+        }
+        /* Exact operations still reconcile previously unmasked exceptions. */
+        fpu_set_exception(env, inexact ? FPUS_PE : 0);
+        return true;
+    }
+#endif
+
     if ((env->fpuc & X87N_FPUC_MASK) != X87N_FPUC_MODE ||
         !XEMU_FPU_PROFILE_POLICY(x87_native_enabled()) ||
         !x87n_binop(op, a.low, a.high, b.low, b.high, &r->low, &r->high,
@@ -787,6 +839,41 @@ static inline bool x87_native_sqrt(CPUX86State *env, floatx80 *r)
 {
     bool inexact;
     XEMU_FPU_PROFILE_POLICY_STATE;
+
+#if X87_NATIVE24_ACTIVE
+    if (!(env->fpuc & X87N_FPUC_MASK)) {
+        enum X87Native24Result result;
+
+        if (get_floatx80_rounding_precision(&env->fp_status) !=
+                floatx80_precision_s ||
+            get_float_rounding_mode(&env->fp_status) !=
+                float_round_nearest_even) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,
+                                           XEMU_FPU_REJECT_PC24_ENV);
+            return false;
+        }
+        if (!XEMU_FPU_PROFILE_POLICY(x87_native_enabled())) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,
+                                           XEMU_FPU_REJECT_POLICY_OFF);
+            return false;
+        }
+        result = x87n24_sqrt(r->low, r->high, &r->low, &r->high, &inexact);
+        if (result != X87N24_HIT) {
+            if (result == X87N24_REJECT_HOST) {
+                XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,
+                                               XEMU_FPU_REJECT_HOST_ENV);
+            } else {
+                XEMU_FPU_PROFILE_REJECT_PC24_SQRT(r->low, r->high);
+            }
+            return false;
+        }
+        if (inexact) {
+            float_raise(float_flag_inexact, &env->fp_status);
+        }
+        fpu_set_exception(env, inexact ? FPUS_PE : 0);
+        return true;
+    }
+#endif
 
     if ((env->fpuc & X87N_FPUC_MASK) != X87N_FPUC_MODE ||
         !XEMU_FPU_PROFILE_POLICY(x87_native_enabled()) ||
