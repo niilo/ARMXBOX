@@ -1,5 +1,10 @@
 # X1 BOX 1.2.11 Pocket S RC14
 
+The v1.2.11 release selects normal RC14: PC24 ON, transfer optimization OFF,
+raw-stack lowering OFF and CPU profiling OFF. See
+[the release findings and next steps](pocket-s-performance.md) for device
+measurements, validation limits and the prioritized continuation plan.
+
 RC14 tests guarded native arithmetic for the 24-bit x87 precision mode observed
 in SSX 3. It also provides explicit CPU experiment controls, since normal RC13
 averaged 26.28 FPS versus an earlier RC11 run's 30.84 FPS. Those single captures

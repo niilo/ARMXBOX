@@ -77,7 +77,7 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 39
+    versionCode = 40
     versionName = "1.2.11"
     buildConfigField("boolean", "CPU_PROFILE_AVAILABLE", cpuProfileHooks.toString())
 
