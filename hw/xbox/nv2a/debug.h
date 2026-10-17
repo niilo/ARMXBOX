@@ -233,6 +233,10 @@ typedef struct CpuTimingWork {
     uint32_t method_count;
     uint32_t method_fast_hit;
     uint32_t method_noninc_words;
+    uint32_t array16_batches;
+    uint32_t array16_words;
+    uint32_t array32_batches;
+    uint32_t array32_words;
     uint64_t tb_hits_snap;
     uint64_t tb_misses_snap;
 } CpuTimingWork;
@@ -251,6 +255,10 @@ typedef struct CpuTimingStats {
     float method_count;
     float method_fast_hit;
     float method_noninc_words;
+    float array16_batches;
+    float array16_words;
+    float array32_batches;
+    float array32_words;
     float tb_hit_pct;
 } CpuTimingStats;
 
@@ -269,6 +277,46 @@ typedef struct VsyncTimingStats {
     float dirty_count;
     float bytes_kb;
 } VsyncTimingStats;
+
+/*
+ * Exclusive subregions of the inclusive finish_fence phase. Copy byte counts
+ * are the requested memcpy lengths, not measured memory-bus traffic.
+ */
+typedef struct VertexRamTimingWork {
+    int64_t next_wait_ns;
+    int64_t first_copy_ns;
+    int64_t span_copy_ns;
+    uint64_t rotations;
+    uint64_t next_wait_calls;
+    uint64_t first_copy_runs;
+    uint64_t span_copy_runs;
+    uint64_t first_copy_bytes;
+    uint64_t span_copy_bytes;
+    uint64_t upload_checks;
+    uint64_t upload_check_bytes;
+    uint64_t upload_nops;
+    uint64_t upload_nop_bytes;
+    uint64_t upload_trim_bytes;
+    uint64_t upload_finishes_avoided;
+} VertexRamTimingWork;
+
+typedef struct VertexRamTimingStats {
+    float next_wait_ms;
+    float first_copy_ms;
+    float span_copy_ms;
+    float rotations;
+    float next_wait_calls;
+    float first_copy_runs;
+    float span_copy_runs;
+    float first_copy_mib;
+    float span_copy_mib;
+    float upload_checks;
+    float upload_check_mib;
+    float upload_nops;
+    float upload_nop_mib;
+    float upload_trim_mib;
+    float upload_finishes_avoided;
+} VertexRamTimingStats;
 
 typedef struct SurfTimingWork {
     int64_t populate_ns;
@@ -341,6 +389,8 @@ typedef struct NV2AStats {
     CpuTimingStats cpu;
     VsyncTimingWork vsync_working;
     VsyncTimingStats vsync;
+    VertexRamTimingWork vram_working;
+    VertexRamTimingStats vram;
     SurfTimingWork surf_working;
     SurfTimingStats surf;
 } NV2AStats;
@@ -360,6 +410,7 @@ void nv2a_profile_get_shader_stats_str(char *buf, int bufsize);
 void nv2a_profile_get_phase_timing_str(char *buf, int bufsize);
 void nv2a_profile_get_cpu_timing_str(char *buf, int bufsize);
 void nv2a_profile_get_vsync_timing_str(char *buf, int bufsize);
+void nv2a_profile_get_vram_timing_str(char *buf, int bufsize);
 void nv2a_profile_get_surf_timing_str(char *buf, int bufsize);
 void nv2a_profile_get_workload_str(char *buf, int bufsize);
 

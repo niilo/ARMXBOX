@@ -28,6 +28,7 @@
 #include "fpu/softfloat-macros.h"
 #include "helper-tcg.h"
 #include "access.h"
+#include "fpu-profile.h"
 
 /* float macros */
 #if defined(USE_HARD_FPU) && defined(__aarch64__)
@@ -44,6 +45,29 @@
 #define ST(n)  (env->fpregs[(env->fpstt + (n)) & 7].d)
 #define ST1    ST(1)
 #define FPREG_VAL(fpreg) ((fpreg).d)
+#endif
+
+#ifndef XEMU_OPT_X87_TRANSFER
+#define XEMU_OPT_X87_TRANSFER 0
+#endif
+
+#if defined(XBOX) && defined(__aarch64__) && !defined(USE_HARD_FPU) && \
+    !USE_NATIVE_DOUBLE_STORAGE && XEMU_OPT_X87_TRANSFER
+#define X87_TRANSFER_ACTIVE 1
+#include "x87-transfer.h"
+#else
+#define X87_TRANSFER_ACTIVE 0
+#endif
+
+#ifndef XEMU_OPT_X87_PC24
+#define XEMU_OPT_X87_PC24 0
+#endif
+
+#if defined(XBOX) && defined(__aarch64__) && !defined(USE_HARD_FPU) && \
+    !USE_NATIVE_DOUBLE_STORAGE && XEMU_OPT_X87_PC24
+#define X87_NATIVE24_ACTIVE 1
+#else
+#define X87_NATIVE24_ACTIVE 0
 #endif
 
 #define FPU_RC_SHIFT        10
@@ -85,19 +109,12 @@
 #define floatx80_pi_d make_floatx80(0x4000, 0xc90fdaa22168c234LL)
 
 /*
- * ARM64 FPU: convert floatx80 <-> double via inline bit manipulation,
- * then use the native ARM64 double-precision FPU for arithmetic.
- *
- * Two acceleration mechanisms exist on ARM64:
- *
- * 1) fp_jit (compile-time): fpu_helper.c is compiled twice via
- *    fpu_helper_hard.c producing helper_*__soft and helper_*__hard symbols.
- *    The __hard helpers always use native double (no runtime branch).
- *    Selection is made once at TCG translation time via g_use_fp_jit.
- *
- * 2) fp_safe (runtime): When fp_jit is off, the __soft helpers use
- *    floatx80_*_rt wrappers that check g_xemu_fp_safe on every call.
- *    Can be toggled at runtime via xemu_set_fp_safe().
+ * The current ARM64 build keeps x87 registers in their original 80-bit format
+ * and uses the guarded native arithmetic below, with softfloat fallback.
+ * The legacy native-double storage implementation remains here, but its
+ * USE_HARD_FPU variant is disabled on ARM64 by fpu_helper_hard.c and the
+ * translator's hard-helper mapping is x86_64-only. A requested fp_jit setting
+ * therefore does not establish ARM64 native-double storage or inline TCG FP.
  */
 #if defined(XBOX) && defined(__aarch64__)
 
@@ -714,6 +731,9 @@ static void merge_exception_flags(CPUX86State *env, int old_flags)
 
 #if !USE_NATIVE_DOUBLE_STORAGE && !defined(USE_HARD_FPU)
 #include "x87-native.h"
+#if X87_NATIVE24_ACTIVE
+#include "x87-native24.h"
+#endif
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
@@ -762,11 +782,52 @@ static inline bool x87_native_binop(CPUX86State *env, int op, floatx80 a,
                                     floatx80 b, floatx80 *r)
 {
     bool inexact;
+    XEMU_FPU_PROFILE_POLICY_STATE;
+
+#if X87_NATIVE24_ACTIVE
+    if (!(env->fpuc & X87N_FPUC_MASK)) {
+        enum X87Native24Result result;
+
+        if (get_floatx80_rounding_precision(&env->fp_status) !=
+                floatx80_precision_s ||
+            get_float_rounding_mode(&env->fp_status) !=
+                float_round_nearest_even) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
+                                           XEMU_FPU_REJECT_PC24_ENV);
+            return false;
+        }
+        if (!XEMU_FPU_PROFILE_POLICY(x87_native_enabled())) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
+                                           XEMU_FPU_REJECT_POLICY_OFF);
+            return false;
+        }
+        result = x87n24_binop(op, a.low, a.high, b.low, b.high,
+                             &r->low, &r->high, &inexact);
+        if (result != X87N24_HIT) {
+            if (result == X87N24_REJECT_HOST) {
+                XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
+                                               XEMU_FPU_REJECT_HOST_ENV);
+            } else {
+                XEMU_FPU_PROFILE_REJECT_PC24_BINOP(op, a.low, a.high,
+                                                  b.low, b.high);
+            }
+            return false;
+        }
+        if (inexact) {
+            float_raise(float_flag_inexact, &env->fp_status);
+        }
+        /* Exact operations still reconcile previously unmasked exceptions. */
+        fpu_set_exception(env, inexact ? FPUS_PE : 0);
+        return true;
+    }
+#endif
 
     if ((env->fpuc & X87N_FPUC_MASK) != X87N_FPUC_MODE ||
-        !x87_native_enabled() ||
+        !XEMU_FPU_PROFILE_POLICY(x87_native_enabled()) ||
         !x87n_binop(op, a.low, a.high, b.low, b.high, &r->low, &r->high,
                     &inexact)) {
+        XEMU_FPU_PROFILE_REJECT_BINOP(env->fpuc, op, a.low, a.high,
+                                    b.low, b.high);
         return false;
     }
     x87_native_raise(env, inexact);
@@ -777,10 +838,47 @@ static inline bool x87_native_binop(CPUX86State *env, int op, floatx80 a,
 static inline bool x87_native_sqrt(CPUX86State *env, floatx80 *r)
 {
     bool inexact;
+    XEMU_FPU_PROFILE_POLICY_STATE;
+
+#if X87_NATIVE24_ACTIVE
+    if (!(env->fpuc & X87N_FPUC_MASK)) {
+        enum X87Native24Result result;
+
+        if (get_floatx80_rounding_precision(&env->fp_status) !=
+                floatx80_precision_s ||
+            get_float_rounding_mode(&env->fp_status) !=
+                float_round_nearest_even) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,
+                                           XEMU_FPU_REJECT_PC24_ENV);
+            return false;
+        }
+        if (!XEMU_FPU_PROFILE_POLICY(x87_native_enabled())) {
+            XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,
+                                           XEMU_FPU_REJECT_POLICY_OFF);
+            return false;
+        }
+        result = x87n24_sqrt(r->low, r->high, &r->low, &r->high, &inexact);
+        if (result != X87N24_HIT) {
+            if (result == X87N24_REJECT_HOST) {
+                XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,
+                                               XEMU_FPU_REJECT_HOST_ENV);
+            } else {
+                XEMU_FPU_PROFILE_REJECT_PC24_SQRT(r->low, r->high);
+            }
+            return false;
+        }
+        if (inexact) {
+            float_raise(float_flag_inexact, &env->fp_status);
+        }
+        fpu_set_exception(env, inexact ? FPUS_PE : 0);
+        return true;
+    }
+#endif
 
     if ((env->fpuc & X87N_FPUC_MASK) != X87N_FPUC_MODE ||
-        !x87_native_enabled() ||
+        !XEMU_FPU_PROFILE_POLICY(x87_native_enabled()) ||
         !x87n_sqrt(r->low, r->high, &r->low, &r->high, &inexact)) {
+        XEMU_FPU_PROFILE_REJECT_SQRT(env->fpuc, r->low, r->high);
         return false;
     }
     x87_native_raise(env, inexact);
@@ -821,16 +919,30 @@ static inline bool x87_native_fist(CPUX86State *env, bool chop, int64_t min,
     return true;
 }
 
-#define X87_NATIVE_BINOP(op, a, b, r) x87_native_binop(env, op, a, b, r)
-#define X87_NATIVE_SQRT(r)            x87_native_sqrt(env, r)
-#define X87_NATIVE_COMPARE(a, b, rel) x87_native_compare(a, b, rel)
+#define X87_NATIVE_BINOP(op, a, b, r) \
+    xemu_fpu_profile_native_result(XEMU_FPU_NATIVE_BINOP, \
+                                  x87_native_binop(env, op, a, b, r))
+#define X87_NATIVE_SQRT(r) \
+    xemu_fpu_profile_native_result(XEMU_FPU_NATIVE_SQRT, \
+                                  x87_native_sqrt(env, r))
+#define X87_NATIVE_COMPARE(a, b, rel) \
+    xemu_fpu_profile_native_result(XEMU_FPU_NATIVE_COMPARE, \
+                                  x87_native_compare(a, b, rel))
 #define X87_NATIVE_FIST(chop, min, max, val) \
-    x87_native_fist(env, chop, min, max, val)
+    xemu_fpu_profile_native_result(XEMU_FPU_NATIVE_FIST, \
+                                  x87_native_fist(env, chop, min, max, val))
 #else
 #define X87_NATIVE_BINOP(op, a, b, r) false
 #define X87_NATIVE_SQRT(r)            false
 #define X87_NATIVE_COMPARE(a, b, rel) false
 #define X87_NATIVE_FIST(chop, min, max, val) ((void)(val), false)
+#endif
+
+#ifndef USE_HARD_FPU
+bool xemu_x87_native_helpers_enabled(void)
+{
+    return x87_native_enabled();
+}
 #endif
 
 #if USE_NATIVE_DOUBLE_STORAGE
@@ -867,8 +979,44 @@ static void fpu_raise_exception(CPUX86State *env, uintptr_t retaddr)
 #endif
 }
 
+#if XEMU_FPU_PROFILE_ACTIVE && X87_TRANSFER_ACTIVE
+static enum XemuFpuProfileTransferPath
+x87_transfer_load64_fallback(uint64_t bits)
+{
+    uint32_t exp = (bits >> 52) & 0x7ff;
+
+    return exp - 1 < 0x7fe ? XEMU_FPU_LS_PRECISION_FALLBACK :
+                            XEMU_FPU_LS_NON_NORMAL_FALLBACK;
+}
+
+static enum XemuFpuProfileTransferPath
+x87_transfer_store_fallback(floatx80 value, unsigned bias, unsigned max_exp)
+{
+    uint32_t exp = (value.high & 0x7fff) - bias;
+
+    return (value.low >> 63) && exp - 1 < max_exp ?
+           XEMU_FPU_LS_PRECISION_FALLBACK : XEMU_FPU_LS_NON_NORMAL_FALLBACK;
+}
+#endif
+
 void helper_flds_FT0(CPUX86State *env, uint32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f32(val, &fast)) {
+        FT0 = fast;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_FT0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_FT0,
+                              XEMU_FPU_LS_NON_NORMAL_FALLBACK);
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_FT0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float32 f;
@@ -882,6 +1030,22 @@ void helper_flds_FT0(CPUX86State *env, uint32_t val)
 
 void helper_fldl_FT0(CPUX86State *env, uint64_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f64(val, env->fp_status.floatx80_rounding_precision, &fast)) {
+        FT0 = fast;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_FT0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_FT0,
+                              x87_transfer_load64_fallback(val));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_FT0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float64 f;
@@ -895,11 +1059,33 @@ void helper_fldl_FT0(CPUX86State *env, uint64_t val)
 
 void helper_fildl_FT0(CPUX86State *env, int32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FILDL_FT0, XEMU_FPU_LS_GENERIC);
     FT0 = int32_to_floatx80(val, &env->fp_status);
 }
 
 void helper_flds_ST0(CPUX86State *env, uint32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f32(val, &fast)) {
+        int top = (env->fpstt - 1) & 7;
+
+        FPREG_VAL(env->fpregs[top]) = fast;
+        env->fpstt = top;
+        env->fptags[top] = 0;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_ST0,
+                              XEMU_FPU_LS_NON_NORMAL_FALLBACK);
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDS_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     int new_fpstt;
     union {
@@ -917,6 +1103,26 @@ void helper_flds_ST0(CPUX86State *env, uint32_t val)
 
 void helper_fldl_ST0(CPUX86State *env, uint64_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    floatx80 fast;
+
+    if (x87t_load_f64(val, env->fp_status.floatx80_rounding_precision, &fast)) {
+        int top = (env->fpstt - 1) & 7;
+
+        FPREG_VAL(env->fpregs[top]) = fast;
+        env->fpstt = top;
+        env->fptags[top] = 0;
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_ST0,
+                              x87_transfer_load64_fallback(val));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDL_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     int new_fpstt;
     union {
@@ -941,6 +1147,8 @@ static FloatX80RoundPrec tmp_maximise_precision(float_status *st)
 
 void helper_fildl_ST0(CPUX86State *env, int32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FILDL_ST0, XEMU_FPU_LS_GENERIC);
     int new_fpstt;
     FloatX80RoundPrec old = tmp_maximise_precision(&env->fp_status);
 
@@ -954,6 +1162,8 @@ void helper_fildl_ST0(CPUX86State *env, int32_t val)
 
 void helper_fildll_ST0(CPUX86State *env, int64_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FILDLL_ST0, XEMU_FPU_LS_GENERIC);
     int new_fpstt;
     FloatX80RoundPrec old = tmp_maximise_precision(&env->fp_status);
 
@@ -967,6 +1177,23 @@ void helper_fildll_ST0(CPUX86State *env, int64_t val)
 
 uint32_t helper_fsts_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    uint32_t fast;
+
+    if (x87t_store_f32(ST0, &fast)) {
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTS_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return fast;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTS_ST0,
+                              x87_transfer_store_fallback(ST0,
+                                                          0x3fff - 0x7f,
+                                                          0xfe));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTS_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float32 f;
@@ -980,6 +1207,23 @@ uint32_t helper_fsts_ST0(CPUX86State *env)
 
 uint64_t helper_fstl_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+#if X87_TRANSFER_ACTIVE
+    uint64_t fast;
+
+    if (x87t_store_f64(ST0, &fast)) {
+        fpu_set_exception(env, 0);
+        XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTL_ST0,
+                                  XEMU_FPU_LS_NORMAL_EXACT_FAST);
+        return fast;
+    }
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTL_ST0,
+                              x87_transfer_store_fallback(ST0,
+                                                          0x3fff - 0x3ff,
+                                                          0x7fe));
+#else
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTL_ST0, XEMU_FPU_LS_GENERIC);
+#endif
     int old_flags = save_exception_flags(env);
     union {
         float64 f;
@@ -993,6 +1237,7 @@ uint64_t helper_fstl_ST0(CPUX86State *env)
 
 int32_t helper_fist_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_CONVERT);
     int64_t fast;
     if (X87_NATIVE_FIST(false, INT16_MIN, INT16_MAX, &fast)) {
         return fast;
@@ -1011,6 +1256,7 @@ int32_t helper_fist_ST0(CPUX86State *env)
 
 int32_t helper_fistl_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_CONVERT);
     int64_t fast;
     if (X87_NATIVE_FIST(false, INT32_MIN, INT32_MAX, &fast)) {
         return fast;
@@ -1028,6 +1274,7 @@ int32_t helper_fistl_ST0(CPUX86State *env)
 
 int64_t helper_fistll_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_CONVERT);
     int64_t fast;
     if (X87_NATIVE_FIST(false, INT64_MIN, INT64_MAX, &fast)) {
         return fast;
@@ -1045,6 +1292,7 @@ int64_t helper_fistll_ST0(CPUX86State *env)
 
 int32_t helper_fistt_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_CONVERT);
     int64_t fast;
     if (X87_NATIVE_FIST(true, INT16_MIN, INT16_MAX, &fast)) {
         return fast;
@@ -1063,6 +1311,7 @@ int32_t helper_fistt_ST0(CPUX86State *env)
 
 int32_t helper_fisttl_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_CONVERT);
     int64_t fast;
     if (X87_NATIVE_FIST(true, INT32_MIN, INT32_MAX, &fast)) {
         return fast;
@@ -1080,6 +1329,7 @@ int32_t helper_fisttl_ST0(CPUX86State *env)
 
 int64_t helper_fisttll_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_CONVERT);
     int64_t fast;
     if (X87_NATIVE_FIST(true, INT64_MIN, INT64_MAX, &fast)) {
         return fast;
@@ -1097,6 +1347,8 @@ int64_t helper_fisttll_ST0(CPUX86State *env)
 
 void helper_fldt_ST0(CPUX86State *env, target_ulong ptr)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FLDT_ST0, XEMU_FPU_LS_GENERIC);
     int new_fpstt;
     X86Access ac;
 
@@ -1114,6 +1366,8 @@ void helper_fldt_ST0(CPUX86State *env, target_ulong ptr)
 
 void helper_fstt_ST0(CPUX86State *env, target_ulong ptr)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FSTT_ST0, XEMU_FPU_LS_GENERIC);
     X86Access ac;
 
     access_prepare(&ac, env, ptr, 10, MMU_DATA_STORE, GETPC());
@@ -1126,22 +1380,26 @@ void helper_fstt_ST0(CPUX86State *env, target_ulong ptr)
 
 void helper_fpush(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     fpush(env);
 }
 
 void helper_fpop(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     fpop(env);
 }
 
 void helper_fdecstp(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     env->fpstt = (env->fpstt - 1) & 7;
     env->fpus &= ~0x4700;
 }
 
 void helper_fincstp(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     env->fpstt = (env->fpstt + 1) & 7;
     env->fpus &= ~0x4700;
 }
@@ -1150,31 +1408,37 @@ void helper_fincstp(CPUX86State *env)
 
 void helper_ffree_STN(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     env->fptags[(env->fpstt + st_index) & 7] = 1;
 }
 
 void helper_fmov_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     ST0 = FT0;
 }
 
 void helper_fmov_FT0_STN(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     FT0 = ST(st_index);
 }
 
 void helper_fmov_ST0_STN(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     ST0 = ST(st_index);
 }
 
 void helper_fmov_STN_ST0(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     ST(st_index) = ST0;
 }
 
 void helper_fxchg_ST0_STN(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
 #if USE_NATIVE_DOUBLE_STORAGE
     double tmp = ST(st_index);
 #else
@@ -1190,6 +1454,7 @@ static const int fcom_ccval[4] = {0x0100, 0x4000, 0x0000, 0x4500};
 
 void helper_fcom_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_COMPARE);
     int old_flags = save_exception_flags(env);
     FloatRelation ret;
 
@@ -1202,6 +1467,7 @@ void helper_fcom_ST0_FT0(CPUX86State *env)
 
 void helper_fucom_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_COMPARE);
     int old_flags = save_exception_flags(env);
     FloatRelation ret;
 
@@ -1216,6 +1482,7 @@ static const int fcomi_ccval[4] = {CC_C, CC_Z, 0, CC_Z | CC_P | CC_C};
 
 void helper_fcomi_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_COMPARE);
     int old_flags = save_exception_flags(env);
     int eflags;
     FloatRelation ret;
@@ -1231,6 +1498,7 @@ void helper_fcomi_ST0_FT0(CPUX86State *env)
 
 void helper_fucomi_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_COMPARE);
     int old_flags = save_exception_flags(env);
     int eflags;
     FloatRelation ret;
@@ -1246,6 +1514,7 @@ void helper_fucomi_ST0_FT0(CPUX86State *env)
 
 void helper_fadd_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     FPU_HELPER_COUNT();
     if (X87_NATIVE_BINOP(X87N_ADD, ST0, FT0, &ST0)) {
         return;
@@ -1257,6 +1526,7 @@ void helper_fadd_ST0_FT0(CPUX86State *env)
 
 void helper_fmul_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     FPU_HELPER_COUNT();
     if (X87_NATIVE_BINOP(X87N_MUL, ST0, FT0, &ST0)) {
         return;
@@ -1268,6 +1538,7 @@ void helper_fmul_ST0_FT0(CPUX86State *env)
 
 void helper_fsub_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     FPU_HELPER_COUNT();
     if (X87_NATIVE_BINOP(X87N_SUB, ST0, FT0, &ST0)) {
         return;
@@ -1279,6 +1550,7 @@ void helper_fsub_ST0_FT0(CPUX86State *env)
 
 void helper_fsubr_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     FPU_HELPER_COUNT();
     if (X87_NATIVE_BINOP(X87N_SUB, FT0, ST0, &ST0)) {
         return;
@@ -1290,12 +1562,14 @@ void helper_fsubr_ST0_FT0(CPUX86State *env)
 
 void helper_fdiv_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     FPU_HELPER_COUNT();
     ST0 = helper_fdiv(env, ST0, FT0);
 }
 
 void helper_fdivr_ST0_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     FPU_HELPER_COUNT();
     ST0 = helper_fdiv(env, FT0, ST0);
 }
@@ -1304,6 +1578,7 @@ void helper_fdivr_ST0_FT0(CPUX86State *env)
 
 void helper_fadd_STN_ST0(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     if (X87_NATIVE_BINOP(X87N_ADD, ST(st_index), ST0, &ST(st_index))) {
         return;
     }
@@ -1314,6 +1589,7 @@ void helper_fadd_STN_ST0(CPUX86State *env, int st_index)
 
 void helper_fmul_STN_ST0(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     if (X87_NATIVE_BINOP(X87N_MUL, ST(st_index), ST0, &ST(st_index))) {
         return;
     }
@@ -1324,6 +1600,7 @@ void helper_fmul_STN_ST0(CPUX86State *env, int st_index)
 
 void helper_fsub_STN_ST0(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     if (X87_NATIVE_BINOP(X87N_SUB, ST(st_index), ST0, &ST(st_index))) {
         return;
     }
@@ -1334,6 +1611,7 @@ void helper_fsub_STN_ST0(CPUX86State *env, int st_index)
 
 void helper_fsubr_STN_ST0(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     if (X87_NATIVE_BINOP(X87N_SUB, ST0, ST(st_index), &ST(st_index))) {
         return;
     }
@@ -1344,32 +1622,38 @@ void helper_fsubr_STN_ST0(CPUX86State *env, int st_index)
 
 void helper_fdiv_STN_ST0(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     ST(st_index) = helper_fdiv(env, ST(st_index), ST0);
 }
 
 void helper_fdivr_STN_ST0(CPUX86State *env, int st_index)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     ST(st_index) = helper_fdiv(env, ST0, ST(st_index));
 }
 
 /* misc FPU operations */
 void helper_fchs_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     ST0 = floatx80_chs(ST0);
 }
 
 void helper_fabs_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     ST0 = floatx80_abs(ST0);
 }
 
 void helper_fld1_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     ST0 = floatx80_one;
 }
 
 void helper_fldl2t_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     switch (env->fpuc & FPU_RC_MASK) {
     case FPU_RC_UP:
         ST0 = floatx80_l2t_u;
@@ -1382,6 +1666,7 @@ void helper_fldl2t_ST0(CPUX86State *env)
 
 void helper_fldl2e_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     switch (env->fpuc & FPU_RC_MASK) {
     case FPU_RC_DOWN:
     case FPU_RC_CHOP:
@@ -1395,6 +1680,7 @@ void helper_fldl2e_ST0(CPUX86State *env)
 
 void helper_fldpi_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     switch (env->fpuc & FPU_RC_MASK) {
     case FPU_RC_DOWN:
     case FPU_RC_CHOP:
@@ -1408,6 +1694,7 @@ void helper_fldpi_ST0(CPUX86State *env)
 
 void helper_fldlg2_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     switch (env->fpuc & FPU_RC_MASK) {
     case FPU_RC_DOWN:
     case FPU_RC_CHOP:
@@ -1421,6 +1708,7 @@ void helper_fldlg2_ST0(CPUX86State *env)
 
 void helper_fldln2_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     switch (env->fpuc & FPU_RC_MASK) {
     case FPU_RC_DOWN:
     case FPU_RC_CHOP:
@@ -1434,21 +1722,25 @@ void helper_fldln2_ST0(CPUX86State *env)
 
 void helper_fldz_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     ST0 = floatx80_zero;
 }
 
 void helper_fldz_FT0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_STACK);
     FT0 = floatx80_zero;
 }
 
 uint32_t helper_fnstsw(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     return (env->fpus & ~0x3800) | (env->fpstt & 0x7) << 11;
 }
 
 uint32_t helper_fnstcw(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     return env->fpuc;
 }
 
@@ -1492,16 +1784,19 @@ void update_fp_status(CPUX86State *env)
 
 void helper_fldcw(CPUX86State *env, uint32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     cpu_set_fpuc(env, val);
 }
 
 void helper_fclex(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     env->fpus &= 0x7f00;
 }
 
 void helper_fwait(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     if (env->fpus & FPUS_SE) {
         fpu_raise_exception(env, GETPC());
     }
@@ -1528,6 +1823,7 @@ static void do_fninit(CPUX86State *env)
 
 void helper_fninit(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     do_fninit(env);
 }
 
@@ -1535,6 +1831,8 @@ void helper_fninit(CPUX86State *env)
 
 void helper_fbld_ST0(CPUX86State *env, target_ulong ptr)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FBLD_ST0, XEMU_FPU_LS_GENERIC);
     X86Access ac;
     uint64_t val;
     unsigned int v;
@@ -1556,6 +1854,8 @@ void helper_fbld_ST0(CPUX86State *env, target_ulong ptr)
 
 void helper_fbst_ST0(CPUX86State *env, target_ulong ptr)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_LOAD_STORE);
+    XEMU_FPU_PROFILE_TRANSFER(XEMU_FPU_LS_FBST_ST0, XEMU_FPU_LS_GENERIC);
     int old_flags = save_exception_flags(env);
     int v;
     target_ulong mem_ref, mem_end;
@@ -1829,6 +2129,7 @@ static const struct f2xm1_data f2xm1_table[65] = {
 
 void helper_f2xm1(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     int old_flags = save_exception_flags(env);
 #if USE_NATIVE_DOUBLE_STORAGE
     ST0 = exp2(ST0) - 1.0;
@@ -1996,6 +2297,7 @@ void helper_f2xm1(CPUX86State *env)
 
 void helper_fptan(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     double fptemp = floatx80_to_double(env, ST0);
 
     if ((fptemp > MAXTAN) || (fptemp < -MAXTAN)) {
@@ -2068,6 +2370,7 @@ static const struct fpatan_data fpatan_table[9] = {
 
 void helper_fpatan(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     int old_flags = save_exception_flags(env);
 #if USE_NATIVE_DOUBLE_STORAGE
     ST1 = atan2(ST1, ST0);
@@ -2514,6 +2817,7 @@ void helper_fpatan(CPUX86State *env)
 
 void helper_fxtract(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     int old_flags = save_exception_flags(env);
 
     if (floatx80_is_zero(ST0)) {
@@ -2647,11 +2951,13 @@ static void helper_fprem_common(CPUX86State *env, bool mod)
 
 void helper_fprem1(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     helper_fprem_common(env, false);
 }
 
 void helper_fprem(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     helper_fprem_common(env, true);
 }
 
@@ -2794,6 +3100,7 @@ static void helper_fyl2x_common(CPUX86State *env, floatx80 arg, int32_t *exp,
 
 void helper_fyl2xp1(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     int old_flags = save_exception_flags(env);
 #if USE_NATIVE_DOUBLE_STORAGE
     ST1 = ST1 * log2(ST0 + 1.0);
@@ -2899,6 +3206,7 @@ void helper_fyl2xp1(CPUX86State *env)
 
 void helper_fyl2x(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     int old_flags = save_exception_flags(env);
 #if USE_NATIVE_DOUBLE_STORAGE
     ST1 = ST1 * log2(ST0);
@@ -3051,6 +3359,7 @@ void helper_fyl2x(CPUX86State *env)
 
 void helper_fsqrt(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_ARITH);
     int old_flags = save_exception_flags(env);
     if (floatx80_is_neg(ST0)) {
         env->fpus &= ~0x4700;  /* (C3,C2,C1,C0) <-- 0000 */
@@ -3066,6 +3375,7 @@ void helper_fsqrt(CPUX86State *env)
 
 void helper_fsincos(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     double fptemp = floatx80_to_double(env, ST0);
 
     if ((fptemp > MAXTAN) || (fptemp < -MAXTAN)) {
@@ -3081,6 +3391,7 @@ void helper_fsincos(CPUX86State *env)
 
 void helper_frndint(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_CONVERT);
     int old_flags = save_exception_flags(env);
     ST0 = floatx80_round_to_int(ST0, &env->fp_status);
     merge_exception_flags(env, old_flags);
@@ -3088,6 +3399,7 @@ void helper_frndint(CPUX86State *env)
 
 void helper_fscale(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     int old_flags = save_exception_flags(env);
     if (floatx80_invalid_encoding(ST1, &env->fp_status) ||
         floatx80_invalid_encoding(ST0, &env->fp_status)) {
@@ -3139,6 +3451,7 @@ void helper_fscale(CPUX86State *env)
 
 void helper_fsin(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     double fptemp = floatx80_to_double(env, ST0);
 
     if ((fptemp > MAXTAN) || (fptemp < -MAXTAN)) {
@@ -3152,6 +3465,7 @@ void helper_fsin(CPUX86State *env)
 
 void helper_fcos(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_TRANSCENDENTAL);
     double fptemp = floatx80_to_double(env, ST0);
 
     if ((fptemp > MAXTAN) || (fptemp < -MAXTAN)) {
@@ -3165,6 +3479,7 @@ void helper_fcos(CPUX86State *env)
 
 void helper_fxam_ST0(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_COMPARE);
 #if USE_NATIVE_DOUBLE_STORAGE
     double val = ST0;
 
@@ -3280,6 +3595,7 @@ static void do_fstenv(X86Access *ac, target_ulong ptr, int data32)
 
 void helper_fstenv(CPUX86State *env, target_ulong ptr, int data32)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     X86Access ac;
 
     access_prepare(&ac, env, ptr, 14 << data32, MMU_DATA_STORE, GETPC());
@@ -3320,6 +3636,7 @@ static void do_fldenv(X86Access *ac, target_ulong ptr, int data32)
 
 void helper_fldenv(CPUX86State *env, target_ulong ptr, int data32)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     X86Access ac;
 
     access_prepare(&ac, env, ptr, 14 << data32, MMU_DATA_STORE, GETPC());
@@ -3348,6 +3665,7 @@ static void do_fsave(X86Access *ac, target_ulong ptr, int data32)
 
 void helper_fsave(CPUX86State *env, target_ulong ptr, int data32)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     int size = (14 << data32) + 80;
     X86Access ac;
 
@@ -3375,6 +3693,7 @@ static void do_frstor(X86Access *ac, target_ulong ptr, int data32)
 
 void helper_frstor(CPUX86State *env, target_ulong ptr, int data32)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     int size = (14 << data32) + 80;
     X86Access ac;
 
@@ -3508,6 +3827,7 @@ static void do_fxsave(X86Access *ac, target_ulong ptr)
 
 void helper_fxsave(CPUX86State *env, target_ulong ptr)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     uintptr_t ra = GETPC();
     X86Access ac;
 
@@ -3757,6 +4077,7 @@ static void do_fxrstor(X86Access *ac, target_ulong ptr)
 
 void helper_fxrstor(CPUX86State *env, target_ulong ptr)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_X87_OTHER);
     uintptr_t ra = GETPC();
     X86Access ac;
 
@@ -4082,16 +4403,19 @@ void update_mxcsr_from_sse_status(CPUX86State *env)
 
 void helper_update_mxcsr(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_OTHER);
     update_mxcsr_from_sse_status(env);
 }
 
 void helper_ldmxcsr(CPUX86State *env, uint32_t val)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_OTHER);
     cpu_set_mxcsr(env, val);
 }
 
 void helper_enter_mmx(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_OTHER);
     env->fpstt = 0;
     *(uint32_t *)(env->fptags) = 0;
     *(uint32_t *)(env->fptags + 4) = 0;
@@ -4099,6 +4423,7 @@ void helper_enter_mmx(CPUX86State *env)
 
 void helper_emms(CPUX86State *env)
 {
+    XEMU_FPU_PROFILE_SCOPE(XEMU_FPU_SSE_OTHER);
     /* set to empty state */
     *(uint32_t *)(env->fptags) = 0x01010101;
     *(uint32_t *)(env->fptags + 4) = 0x01010101;

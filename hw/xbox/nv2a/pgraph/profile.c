@@ -143,6 +143,10 @@ static void snapshot_cpu_timing(void)
     SMOOTH_CNT(p->method_count, w->method_count);
     SMOOTH_CNT(p->method_fast_hit, w->method_fast_hit);
     SMOOTH_CNT(p->method_noninc_words, w->method_noninc_words);
+    SMOOTH_CNT(p->array16_batches, w->array16_batches);
+    SMOOTH_CNT(p->array16_words, w->array16_words);
+    SMOOTH_CNT(p->array32_batches, w->array32_batches);
+    SMOOTH_CNT(p->array32_words, w->array32_words);
 
 #undef SMOOTH_CNT
 
@@ -174,6 +178,10 @@ static void snapshot_cpu_timing(void)
     w->method_count      = 0;
     w->method_fast_hit   = 0;
     w->method_noninc_words = 0;
+    w->array16_batches = 0;
+    w->array16_words = 0;
+    w->array32_batches = 0;
+    w->array32_words = 0;
 }
 
 static void snapshot_vsync_timing(void)
@@ -194,6 +202,37 @@ static void snapshot_vsync_timing(void)
 #undef SMOOTH_CNT
 
     memset(w, 0, sizeof(*w));
+}
+
+static void snapshot_vram_timing(void)
+{
+#if NV2A_PERF_LOG
+    VertexRamTimingWork *w = &g_nv2a_stats.vram_working;
+    VertexRamTimingStats *p = &g_nv2a_stats.vram;
+    const float alpha = 0.2f;
+
+#define SMOOTH(dst, value) do { \
+    p->dst = p->dst * (1.0f - alpha) + (float)(value) * alpha; \
+} while (0)
+    SMOOTH(next_wait_ms, w->next_wait_ns / 1e6);
+    SMOOTH(first_copy_ms, w->first_copy_ns / 1e6);
+    SMOOTH(span_copy_ms, w->span_copy_ns / 1e6);
+    SMOOTH(rotations, w->rotations);
+    SMOOTH(next_wait_calls, w->next_wait_calls);
+    SMOOTH(first_copy_runs, w->first_copy_runs);
+    SMOOTH(span_copy_runs, w->span_copy_runs);
+    SMOOTH(first_copy_mib, w->first_copy_bytes / 1048576.0);
+    SMOOTH(span_copy_mib, w->span_copy_bytes / 1048576.0);
+    SMOOTH(upload_checks, w->upload_checks);
+    SMOOTH(upload_check_mib, w->upload_check_bytes / 1048576.0);
+    SMOOTH(upload_nops, w->upload_nops);
+    SMOOTH(upload_nop_mib, w->upload_nop_bytes / 1048576.0);
+    SMOOTH(upload_trim_mib, w->upload_trim_bytes / 1048576.0);
+    SMOOTH(upload_finishes_avoided, w->upload_finishes_avoided);
+#undef SMOOTH
+
+    memset(w, 0, sizeof(*w));
+#endif
 }
 
 static void snapshot_surf_timing(void)
@@ -251,6 +290,7 @@ void nv2a_profile_flip_stall(void)
     snapshot_phase_timing();
     snapshot_cpu_timing();
     snapshot_vsync_timing();
+    snapshot_vram_timing();
     snapshot_surf_timing();
 
     g_nv2a_stats.phase_working.post_flip = true;
@@ -277,6 +317,8 @@ void nv2a_profile_flip_stall(void)
         __android_log_print(ANDROID_LOG_INFO, "hakuX-cpu", "%s", buf);
         nv2a_profile_get_vsync_timing_str(buf, sizeof(buf));
         __android_log_print(ANDROID_LOG_INFO, "xemu-vsync", "%s", buf);
+        nv2a_profile_get_vram_timing_str(buf, sizeof(buf));
+        __android_log_print(ANDROID_LOG_INFO, "xemu-vram", "%s", buf);
         nv2a_profile_get_surf_timing_str(buf, sizeof(buf));
         __android_log_print(ANDROID_LOG_INFO, "xemu-surf", "%s", buf);
         nv2a_profile_get_pacing_str(buf, sizeof(buf));
@@ -365,7 +407,8 @@ void nv2a_profile_get_cpu_timing_str(char *buf, int bufsize)
     snprintf(buf, bufsize,
              "CPU: K:%.0f W:%.1fK M:%.0f(Fh:%.0f Ni:%.0f) "
              "Lock:%.1fms Push:%.1fms "
-             "SpH:%.0f%% IdS:%.0f%% TbH:%.1f%%",
+             "SpH:%.0f%% IdS:%.0f%% TbH:%.1f%% "
+             "Idx16:%.0f/%.0f Idx32:%.0f/%.0f",
              p->kick_count,
              p->pusher_words / 1000.0f,
              p->method_count,
@@ -375,7 +418,9 @@ void nv2a_profile_get_cpu_timing_str(char *buf, int bufsize)
              p->pusher_run_ms,
              spin_pct,
              idle_pct,
-             p->tb_hit_pct);
+             p->tb_hit_pct,
+             p->array16_batches, p->array16_words,
+             p->array32_batches, p->array32_words);
 }
 
 void nv2a_profile_get_vsync_timing_str(char *buf, int bufsize)
@@ -384,6 +429,26 @@ void nv2a_profile_get_vsync_timing_str(char *buf, int bufsize)
     snprintf(buf, bufsize,
              "Vsyn: C:%.0f R:%.0f M:%.0f D:%.0f %.0fKB",
              p->calls, p->reqs, p->merged, p->dirty_count, p->bytes_kb);
+}
+
+void nv2a_profile_get_vram_timing_str(char *buf, int bufsize)
+{
+    VertexRamTimingStats *p = &g_nv2a_stats.vram;
+    snprintf(buf, bufsize,
+             "per-flip Rot:%.1f NextWait:%.2fms/#%.1f "
+             "MirrorCopy:%.2fms %.3fMiB/#%.1f "
+             "[First:%.2fms %.3fMiB/#%.1f Span:%.2fms %.3fMiB/#%.1f] "
+             "VtxCmp:%.1f/%.3fMiB NoOp:%.1f/%.3fMiB "
+             "Trim:%.3fMiB Avoid:%.1f",
+             p->rotations, p->next_wait_ms, p->next_wait_calls,
+             p->first_copy_ms + p->span_copy_ms,
+             p->first_copy_mib + p->span_copy_mib,
+             p->first_copy_runs + p->span_copy_runs,
+             p->first_copy_ms, p->first_copy_mib, p->first_copy_runs,
+             p->span_copy_ms, p->span_copy_mib, p->span_copy_runs,
+             p->upload_checks, p->upload_check_mib,
+             p->upload_nops, p->upload_nop_mib,
+             p->upload_trim_mib, p->upload_finishes_avoided);
 }
 
 void nv2a_profile_get_surf_timing_str(char *buf, int bufsize)

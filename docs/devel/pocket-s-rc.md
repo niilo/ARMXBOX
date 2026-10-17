@@ -1,0 +1,727 @@
+# X1 BOX 1.2.11 Pocket S RC14
+
+The v1.2.11 release selects normal RC14: PC24 ON, transfer optimization OFF,
+raw-stack lowering OFF and CPU profiling OFF. See
+[the release findings and next steps](pocket-s-performance.md) for device
+measurements, validation limits and the prioritized continuation plan.
+
+RC14 tests guarded native arithmetic for the 24-bit x87 precision mode observed
+in SSX 3. It also provides explicit CPU experiment controls, since normal RC13
+averaged 26.28 FPS versus an earlier RC11 run's 30.84 FPS. Those single captures
+had different pacing/workload and do not isolate the cause. Device testing must
+establish the new arithmetic path's actual coverage and performance.
+
+## Three normal APKs
+
+| Build | PC24 arithmetic | RC13 transfer optimization | Purpose |
+| --- | --- | --- | --- |
+| RC14 Control | Off | Off | Restore the RC11 CPU helper path as a fresh control. |
+| RC14 | On | Off | Isolate the new arithmetic path. Start here after the control. |
+| RC14 Combined | On | On | Measure the transfer optimization alongside the new path. |
+
+All three use full 80-bit x87 registers, raw-stack lowering OFF, and CPU
+profiling compiled out. The RC8 rendering fixes, RC9 Vulkan work and RC10 audio
+code are retained. Their application ID, signing certificate and version code
+39 match previous X1 BOX Test candidates; install normally without clearing data.
+The version names identify each build. No new diagnostic APK is required for
+this initial performance comparison.
+
+## Arithmetic contract
+
+The new path requires guest PC24 and round-to-nearest, matching softfloat
+precision/rounding state, and the existing native policy. It accepts signed zero
+and ordinary operands already exactly representable with 24 significand bits,
+with nonzero unbiased exponents between -60 and +60. It never rounds operands
+to make them eligible. The host FPCR must use nearest rounding and masked
+exception traps; alternate-handling/input-flush controls are conservatively
+rejected. Bounds keep admitted inputs/results and exactness checks clear of
+subnormal/overflow behavior, including when ordinary flush-to-zero is enabled.
+
+Addition, subtraction, multiplication, division and square root compute at
+binary32 precision, giving the guest-requested single rounding. Separate
+binary64 checks recover the guest inexact flag exactly for this bounded subset.
+All remaining cases use the existing implementation, including wider
+significands/exponents, incompatible modes, special encodings and policy OFF.
+The current PC53 implementation remains in place.
+
+Success preserves full 80-bit state and old sticky flags, and reconciles
+preexisting unmasked pending exceptions even for an exact result. Rejection
+leaves outputs untouched. Translator/helper boundaries, guest memory ordering,
+interrupts, GPU synchronization and audio behavior are unchanged.
+Accepted native operations can raise host hardware sticky flags, as existing
+native arithmetic does; they preserve host rounding and errno. The mathematical
+and independent reports state the host-environment and execution limits.
+
+## Why this target
+
+The RC13 profiling capture provides 20 complete gameplay intervals. Its new
+transfer branches handle 80.58% of x87 load/store entries, confirming frequent
+use. Binary arithmetic falls back on 60.82% of attempts; PC24 is the first
+blocking guard for 99.9738% of those fallbacks. Every recorded gameplay square
+root also falls back on that guard. These are call counts and first rejection
+reasons, leaving operation cost and eligibility under the new guards unmeasured.
+PC24 rejection happens before operand tests, so it does not establish that every
+one of those operations can be accelerated.
+
+## Device comparison
+
+Use the same SSX 3 course at 3x, Turnip driver, cache state, power/fan mode,
+charging state and sound settings. Cool to comparable starting temperatures.
+
+1. Run RC14 Control and export a full log, including later gameplay.
+2. Run RC14 after cooling and repeat the route. This pair isolates PC24.
+3. Run RC14 Combined after cooling. Compare against RC14 to isolate transfers.
+
+Startup should show `raw_x87_stack=off helper_profile=off` with the intervening
+`x87_transfer` and `x87_pc24` values matching the table. Record sustained FPS,
+vertex/texture popping, sound changes and temperatures. Repeat a promising pair
+if the difference is small. Normal RC11 remains an optional historical control.
+No RC14 FPS gain, 60 FPS result or visual/audio result is established in cloud.
+Adaptive VBLANK/unlock behavior has not been forced or retuned.
+
+## Build controls and diagnostics
+
+Normal Android defaults are `xemu.x87Pc24=true`, `xemu.x87Transfer=false`,
+`xemu.rawX87Stack=false` and `xemu.cpuProfileHooks=false`. All become explicit
+CMake ON/OFF values. Build Control with `-Pxemu.x87Pc24=false`; build Combined
+with `-Pxemu.x87Transfer=true`. The build manifest verifies actual compile flags,
+source identities, dependencies and APK identity for each variant.
+
+The existing profiling companion can still be compiled separately. Its six-record
+format retains old counters; rejection records use v=3 and append `pc24Env` and
+`hostEnv` to distinguish softfloat-state and captured host-environment rejections.
+PC24 operand rejection now uses its actual 24-bit/range guards. Diagnostics never
+retry arithmetic or re-read FPCR to classify the captured result. Normal builds
+erase these hooks. Existing diagnostic settings and default-on behavior remain.
+
+## Validation and tradeoffs
+
+The real unchanged softfloat implementation and immutable RC13 helpers are the
+numerical and state reference. Each of four feature/policy combinations passes
+1,774,436 modeled state comparisons and 1,774,469 direct numerical/rejection
+checks with GCC ASan/UBSan and Clang; an independent reviewer repeats both
+compiler matrices. Coverage includes all precision/rounding modes, old sticky
+flags, pending exceptions, aliases, special encodings, cancellation, midpoint
+neighbors and randomized states. Four semantic negative controls detect broken
+admission, double rounding, inexact flags and pending-exception reconciliation.
+Separate profiler tests cover enabled/compiled-out modes and five negative
+controls, preserving the existing report fields and avoiding arithmetic retries.
+
+The packaged ARM64 ThinLTO review verifies the FPCR success guard dominates the
+new single-precision arithmetic and double exactness checks. Square root uses
+inline hardware FSQRT; normal builds contain no profiler symbols. The shared
+binary wrapper grows from 696 to 1,332 bytes and the square-root helper from
+644 to 1,056 bytes, adding 1,048 bytes in total. The other twelve arithmetic
+helper sizes remain unchanged. These are static function sizes, not CPU-cycle
+measurements. Unsupported inputs pay extra guard checks before falling back.
+
+All three APKs have separately verified source hashes, actual compile options,
+dependency pins, manifest/signature, ARM64 library alignment and native dependency
+closure. Host fixtures model helper state; they do not execute ARM FPCR, Android
+lifecycle, guest MMU faults or games. Device testing remains necessary for
+eligibility, sustained FPS, thermal behavior and rendering/audio quality.
+
+## Previous RC13
+
+### X1 BOX 1.2.11 Pocket S RC13
+
+RC13 tests compact, exact ARM64 x87 load/store helper improvements using the
+normal RC11 CPU path as its reference. The RC12 raw-stack experiment defaults
+OFF. Both RC13 APKs retain RC8 rendering fixes, RC9 Vulkan command changes and
+RC10 audio work. They use the same test application, signing certificate and
+version code 39, allowing updates between these candidates without clearing
+app data. Pocket S game performance and visual/audio quality need device tests.
+
+## Normal and diagnostic APKs
+
+Normal RC13 compiles CPU profiling out entirely. Use it for the performance
+comparison against normal RC11. RC13 CPU Profile includes the same helper
+optimization plus detailed diagnostic counters and sampled timing; use it for
+a separate short diagnostic capture. Its instrumented FPS is not a clean
+performance control.
+
+The RC13 diagnostic switch defaults ON. It uses a new saved preference so an
+older normal build's saved false value does not suppress first-run diagnostics.
+An explicit disable in the diagnostic build and the developer force-off property
+remain respected. Normal Settings hides the switch and does not rewrite it.
+After changing it, save Settings and launch the game again. The startup line
+reports the actual active state as `helper_profile=sampled` or `off`, together
+with `raw_x87_stack=off` and the `x87_transfer` option.
+
+## Exact C-helper work
+
+The selected operations are float32/float64 loads to FT0 or ST0, and stores
+from ST0 to float32/float64. Existing softfloat normal/exact bit-packing cases
+already avoid the general conversion algorithm. RC13 moves those narrow,
+proven predicates into the surrounding C helpers so eligible calls can avoid
+FP-flag save/clear/merge work and conversion calls where present. ThinLTO already
+inlines the reference load conversions; the load benefit therefore concerns
+wrapper work rather than removing an inner call. The TCG helper call and
+guest-memory operation remain in place.
+
+Successful cases preserve full 80-bit payloads, prior floating flags, stack/TOP
+and tags, and existing pending-exception reconciliation. Ineligible encodings,
+values requiring rounding, ranges and precision modes follow the reference
+implementation. In particular, float64 loads at 24-bit precision retain the
+reference path. Native arithmetic eligibility, interrupts, synchronization,
+GPU workarounds and audio behavior are unchanged.
+
+The detailed companion counts individual load/store helpers and actual
+normal-exact, precision-rejected, non-normal/range-rejected or generic helper
+branches. A generic helper can still use an existing softfloat shortcut;
+these are branch/eligibility observations, not conversion CPU-time shares.
+Separate binary/sqrt rejection counters distinguish precision/rounding policy,
+operand encoding/representability/exponent and result rejection. The original
+arithmetic is evaluated once; diagnostic classification uses integer reads.
+Each rejected operation records its first prioritized reason, rather than every
+simultaneously failing condition. Normal builds compile the additional hooks
+and classification out. New records are `xemu-cpu-ls` and two `xemu-cpu-reject`
+lines, grouped with the original three records by process/thread/sequence.
+
+Sampled timings retain the existing one-per-1,024 category entries and at-least
+five-second reporting. Clock overhead, nested scopes, incomplete nonlocal exits
+and periodic sampling limit attribution. Thread CPU time describes the helper-
+executing host thread, including translated work and diagnostics, rather than
+the entire emulator. Do not extrapolate tiny samples into exact CPU shares.
+
+## Device comparison
+
+Use the same SSX 3 course, Turnip driver, 3x resolution, power/fan/audio settings
+and cache state. Start each normal run after a comparable cooldown; record any
+new visual or sound issue along with sustained gameplay FPS.
+
+1. Capture a normal RC11 reference run.
+2. Install normal RC13, cool to a comparable starting temperature and repeat.
+3. Install RC13 CPU Profile and capture 1-2 minutes of gameplay, including the
+   later section if convenient. Confirm profiling remains enabled in Settings.
+   Export this log separately from the performance comparison.
+
+The previous normal RC11/RC12 pair logged 30.84/28.97 settled FPS, but different
+starting temperatures and workload/pacing prevent a causal regression estimate.
+The active RC11 profile measured 42.3% load/store, 19.3% stack and 16.5%
+arithmetic among selected helper entries, with 61.6% binary-arithmetic fallback.
+Those are call proportions from an instrumented run, not CPU cost or a predicted
+RC13 FPS gain. RC14 arithmetic changes depend on the new rejection evidence.
+
+## Validation and tradeoffs
+
+GCC ASan/UBSan and Clang checks compare both transfer-option states against
+immutable RC11 helpers and the unchanged real softfloat implementation:
+2,781,337 state comparisons per option, including pending exceptions, all
+precision/rounding modes, edge encodings and seeded random inputs. Independent
+review repeats these checks and detects deliberately removed pending-status
+and PC24 guards. Only nonarchitectural floatx80 tail padding is normalized.
+Profiler checks cover compiled-out/instrumented modes, state/FENV/errno,
+single arithmetic evaluation, lazy counters, TLS, reporting and negative controls.
+
+The linked normal ThinLTO ELF reduces selected exact-load paths from
+47/51/55/59 to 35/38/44/47 ARM64 instructions. Reference loads already inline
+their conversions. Exact stores remove an inner conversion call and reduce the
+selected caller-plus-converter path from 67/68 to 31 instructions. These are
+static paths with no pending unmasked exception, not measured CPU cycles.
+Six helper bodies grow by 432 bytes; rejected paths add eligibility checks
+before their unchanged generic conversion. Device measurements must establish
+the net result. Normal helper code contains no profiling/reason references.
+
+Host fixtures use the relevant modeled CPU state; they do not execute Android,
+AArch64 instructions or real guest MMU faults. The APKs are built separately
+with assertions and ThinLTO, and their manifests record packaging and source
+verification. New Pocket S FPS, graphics and audio results remain unmeasured.
+
+## Rebuilding
+
+Normal Android Profile defaults are `xemu.rawX87Stack=false`,
+`xemu.x87Transfer=true` and `xemu.cpuProfileHooks=false`. These Gradle properties
+emit explicit CMake values, including OFF, so older native caches cannot silently
+select the RC12 stack path. For the companion, pass
+`-Pxemu.cpuProfileHooks=true`. A local reference compiler check can disable the
+new helper paths using `-Pxemu.x87Transfer=false`. Verify actual compile flags
+and APK identity; delivered manifests record the validated configuration.
+
+## Previous RC11 / RC12 CPU comparison
+
+RC11 is the CPU execution reference for this comparison. RC12 enables
+exact ARM64 x87 stack/register lowering. Both normal builds compile the new
+profiling hooks out entirely. A separate RC11 CPU Profile APK supplies runtime
+helper measurements using the reference path.
+All three builds retain RC8's rendering fixes and use version code 39 with the same
+test certificate, allowing updates between the candidates without clearing data.
+
+## RC11 CPU measurements and RC12 exact x87 stack operations
+
+The earlier Android `FP JIT: ON` message printed the requested preference,
+although the native-double-storage inline path is gated to x86-64 hosts. The
+new `xemu-cpu-mode` startup line distinguishes the actual ARM64 path: 80-bit
+x87 storage, guarded native arithmetic helpers with softfloat fallback, the
+raw-stack compile option, and whether runtime profiling is enabled. Existing
+safe arithmetic and its precision checks remain in place.
+
+Only the RC11 CPU Profile APK shows Settings > Maintenance > CPU profiling.
+Enable it and save Settings before launching a separate diagnostic run.
+The normal RC11/RC12 APKs have no profiler hooks, scopes or runtime branches.
+A compiler check found that merely switching profiling off at runtime retained
+a helper stack frame, so this separate build keeps that cost out of FPS tests.
+With profiling enabled, helper entries are
+counted at runtime, selected calls are sampled once per 1,024 entries in each
+category, and the helper-executing thread emits summaries at intervals of at
+least five seconds. The log tags are `xemu-cpu-run`, `xemu-cpu-native` and
+`xemu-cpu-sample`. Normal performance runs should leave CPU profiling off.
+
+The measurements distinguish x87/SSE helper categories, guarded native-x87
+success/fallback counts, and sampled elapsed/thread CPU time. Thread CPU time
+covers that host thread's work during the interval, including translated code,
+helpers and other work; it is not whole-emulator utilization. Sampled scopes
+include measurement overhead and can overlap if helpers nest. A guest exception
+can leave a counted entry without a completed timed sample. These are diagnostic
+observations, not precise per-frame costs or raw latency percentiles.
+
+RC12 enables `XEMU_OPT_X87_STACK` on ARM64. It lowers six operations directly to
+integer TCG IR: x87 push/pop, three register/temporary moves and FXCH. Moves and
+swaps retain the complete register object and all 80 architectural bits; there
+is no conversion to double precision. Stack tags and TOP, pending instruction
+and data pointers, aliases and normal helper/block boundaries are preserved.
+Arithmetic, guest memory operations, interrupts, GPU synchronization and audio
+settings are unchanged. The legacy native-double-storage path stays disabled
+on ARM64. Other host architectures retain their existing path.
+
+The source-level change removes the selected helper calls. Exact CPU-state
+comparison and actual TCG code execution establish correctness for the covered
+cases; they do not establish SSX 3 instruction frequency or a device FPS gain.
+FEXCore is a research reference for this work, not a new runtime dependency.
+
+For device testing, use the same SSX 3 route, Turnip driver, resolution, power
+and fan mode, sound output and comparable starting temperatures:
+
+1. Install normal RC11 and capture a full run; its profiling hooks are absent.
+2. Install normal RC12 and repeat the same route after cooling.
+3. For helper diagnostics, install RC11 CPU Profile, enable CPU profiling, save
+   Settings, launch the game again and export a separate log. Label this as a
+   profiling run; it is not an FPS comparison build.
+
+The 3x comparison is the primary performance target. A 1x comparison can help
+distinguish resolution cost. Note any returning vertex/texture popping or sound
+change. Do not attribute a profiling-on FPS difference solely to the raw-stack
+optimization: removing helpers also removes their profiling hooks.
+
+The Android CMake default for `XEMU_OPT_X87_STACK` is ON in RC12; it is OFF in
+the RC11 source commit. Existing CMake caches retain explicitly configured
+values, so builders must set `-DXEMU_OPT_X87_STACK=ON` for RC12 or `OFF` for
+the reference in their configured native build directory. The delivered APK
+manifests include checks of actual compile commands, not only option defaults.
+The separate diagnostic build uses Gradle `-Pxemu.cpuProfileHooks=true` at the
+RC11 commit. Normal builds omit that property, compiling the hooks out.
+
+Cloud validation covers the source-IR differential matrix with GCC ASan/UBSan
+and Clang, plus 102 real native-TCG programs and 158,576 CPU-state comparisons.
+The retained tests include helper-boundary observations and negative controls.
+The real-TCG execution uses an x86-64 backend with the selected raw emitter
+bodies; Android ARM64 compilation is checked separately. No target-device
+execution or guest MMU fault/unwind is covered by those fixtures. Removing
+helpers also grows generated code in the host fixture, so device performance
+must decide whether to retain this candidate. APK checks cover signing,
+manifest, native dependency closure and 16 KiB ELF alignment.
+
+## Previous RC10 audio candidate
+
+This ARM64 Android candidate contains changes that can be checked without game
+files or target hardware. It is intended for the AYANEO Pocket S on Android 13.
+Actual startup, game compatibility, frame pacing and sustained performance still
+need device testing. Native Linux/Steam Deck benefits are not measured here.
+
+## RC10 audio mixer efficiency and measurements
+
+RC10 includes RC8's rendering corrections and RC9's Vulkan command suppression.
+The voice mixer computes each of its eight attenuation values once and reuses
+that value for the VP monitor output. Previously that output recalculated the
+same values. Sample accumulation order, envelopes, headroom, resampling,
+filters, HRTF, ADPCM decoding and guest voice state remain unchanged.
+
+Actual production voice processing matches the baseline byte for byte across
+PCM, stereo/multipass, filtering, pitch, HRTF, ADPCM, mute/pause/isolation,
+all 4,096 volume codes plus boundary cases in four host rounding modes. Both the Android linear
+resampler and desktop sinc branch are checked. Native ARM64 compilation also
+shows the duplicated power-function call loop is removed. Host timing varies
+with load and does not establish a game FPS gain; non-VP monitoring does not
+benefit from removing the duplicate monitor calculation.
+
+A startup diagnostic reports the selected SDL backend and actual obtained
+format/device period, converted stream period and existing FIFO thresholds.
+It labels a failed query as fallback. This runs before playback is resumed,
+with no callback logging or new timing policy. The current logs use OpenSL ES
+but lack actual period or underrun measurements, so callback, driver and
+worker defaults are retained. The existing interpreter DSP suite and an
+explicit Rust JIT companion check the mandatory DSP backend separately.
+
+## RC9 Vulkan command efficiency
+
+RC9 includes all RC8 freshness and upload-ordering corrections. It compares
+only register bits consumed by each existing Vulkan dynamic-state command
+group. A fragment alpha-reference change previously reissued four depth/stencil
+and three blend/color commands even though none of their arguments changed.
+RC9 avoids those seven commands while retaining the actual alpha uniform update.
+
+Command bodies, argument calculations, capability checks and cache resets on
+new command buffers/pipeline binds remain unchanged. A differential oracle
+checks the resulting recorded Vulkan state after each transition, including
+clear draws, extension combinations and individual relevant/ignored bits.
+This establishes equivalent state and fewer redundant commands for those
+patterns; actual device command frequency and FPS benefit need measurement.
+
+## RC8 uniform and texture freshness
+
+The RC7 full settled SSX 3 runs average 42.89 FPS at 1x and 42.56 FPS at 3x.
+Their primary sections average 39.71/39.10 FPS. Shader-state preparation falls
+from about 1.5 to 0.7 ms per flip, but the user reports more vertex/texture
+popping. Scene progression, adaptive pacing and reversed starting thermal
+conditions prevent a controlled speedup claim.
+
+RC8 repairs missing freshness checks in paths made more usable by RC7:
+
+- Material alpha and light vectors stored outside the register arrays mark the
+  existing lighting dirty flag when their bits change. Pipeline reuse refreshes
+  register-backed uniforms when the register generation changes, including
+  after a render pass ends. The last serialized primitive class also prevents
+  stale polygon-offset uniforms when rewritten points/lines share a pipeline.
+- Repeated texture setup retains a pending descriptor update until actual draw
+  consumers use it. Switching between linear textures with different effective
+  scales forces their shader uniform to refresh. A separate plain-descriptor
+  fallback initializes its image key and avoids an invalid cache slot when
+  descriptor caching is disabled; this optional path was not the logged mode.
+- A revived shelved surface refreshes from authoritative VRAM because CPU writes
+  while shelved have no access callback. Its allocation/image/view are reused.
+  The upload transition also orders previous fragment texture reads before
+  transfer writes. Active compatible surfaces retain their normal reuse path.
+
+The tests reproduce these source defects against immutable RC7, including
+actual uniform values and descriptor images. Their role in the specific SSX 3
+popping events needs device confirmation. Correct freshness can require work
+that the invalid fast path skipped, so a quality fix may cost some cache hits.
+Required assertions, driver workarounds and resource retirement remain intact.
+
+The test candidates from RC8 onward share version code 39, with distinct version names.
+This permits switching between its APKs using an ordinary update with the same
+signing certificate and existing data. Test RC8 first, then RC9 and RC10,
+keeping Turnip/options and starting temperatures comparable. Later candidates
+add CPU/GPU command-efficiency and audio work on top of this correction.
+
+## RC7 shader state and CPU work reductions
+
+Full RC6 SSX 3 runs settle at about 40.21 FPS at 1x and 40.59 FPS at 3x.
+The earlier upload changes reduce vertex-conflict finishes to about 0.5 per
+flip and inclusive submission time to roughly 2 ms in the primary sections.
+The common 120-second 1x comparison with RC5 is essentially unchanged at
+39.80 versus 39.98 FPS. Different scene progression, adaptive pacing and a
+hotter 3x start prevent attributing the other FPS differences to one change.
+RC6 is committed as `8aa78b9cb878c8cc9f11388ec28bad1d6a3ef086` on
+[`perf/pocket-s-performance`](https://github.com/niilo/ARMXBOX/tree/perf/pocket-s-performance).
+
+RC7 acknowledges a shader-change notification after pipeline, descriptor and
+constant consumers have used it. Previously it could remain set across
+unchanged draws, repeatedly preparing pipeline keys, uniforms and descriptors.
+The focused regression reproduces 51 preparation decisions for 51 unchanged
+draws before the fix, versus one after it. Real shader changes, clear/skipped
+draws, queued setup and fresh command buffers retain their required updates.
+These operation counts do not predict an equivalent FPS increase.
+
+Nonincrementing 16/32-bit index methods now ingest their complete payload with
+one state/capacity check and length publication. Guest word order, method
+consumption, tracing and DRAW_ARRAYS expansion remain equivalent for valid
+input. Packed 16-bit capacity checks also reject an observed overrun at the
+last slot. New `hakuX-cpu` fields `Idx16:batches/words` and
+`Idx32:batches/words` report per-flip coverage; this is a small local CPU saving
+whose actual device importance depends on the workload.
+
+Contiguous uniform arrays use one bulk copy instead of repeated small copies.
+Padded arrays retain their existing element loop and layout. This reduces
+copy setup for the vertex constant array without changing shader values.
+
+Required assertions, synchronization, existing Turnip options and driver
+workarounds remain enabled. Host regressions and the ARM64 build establish
+source behavior and packaging; RC7 gameplay FPS, sustained thermals and image
+quality need the next device run.
+
+## Vertex upload and pipeline reuse retained from RC6
+
+RC5 device logs show that sparse vertex-mirror copying works: requested copy
+work is about 0.2–0.3 MiB and 0.03 ms per flip, down from roughly 120–130 MiB
+and 11 ms in RC4. Gameplay rates improved, but scene progression and active
+pacing differ between runs. The user reports playable performance with some
+remaining artifacts; 60 FPS has not been reached consistently.
+
+RC6 checks uploads that overlap vertices used by recorded draws. After the
+existing surface download, and only for initialized, already-uploaded mirror
+ranges, it avoids rewriting identical bytes and trims unchanged boundary pages.
+Actual changed bytes that overlap recorded reads retain the existing finish
+and fence path. This targets unnecessary submissions without changing guest
+memory semantics or driver synchronization.
+
+Primitive-cache comparisons now use the renderer's rewritten output topology,
+as shader construction already does. Comparing a raw strip/fan with a stored
+triangle-list type caused repeated misses; the RC5 logs show primitive-type
+mismatches account for about 41–43% of sampled first-reason fast-path misses.
+Raw primitive assembly, polygon state and other cache invalidation guards
+remain in effect. Reuse also rejects clear pipelines, changed shader attribute
+masks and changed vertex layouts, so normalized topology alone cannot admit
+incompatible state.
+
+Immediate vertex constants also receive a value-change check, since some guest
+methods update them without advancing layout generations. Changed values
+refresh shader inputs; unchanged values retain cache reuse. This keeps the
+newly reusable draw paths from using an earlier draw's constants.
+
+A separate upload-range fix includes the final vertex element's full width,
+including when stride is smaller than that width. It also avoids trailing
+stride padding. This closes a demonstrated page-tail omission that can leave
+stale vertex bytes; its role in SSX 3 artifacts remains unconfirmed.
+
+The candidate keeps the tested Turnip options and existing rendering safeguards.
+Host regressions do not establish RC6 device FPS or image quality. Compare
+submission counts, upload checks/skips, geometry and gameplay performance with
+RC5 on the same later course section.
+
+The `xemu-vram` line adds `VtxCmp`, `NoOp`, `Trim` and `Avoid` counters. These
+report candidate upload requests/bytes, fully skipped uploads, omitted boundary
+bytes and avoided vertex-dirty finishes per flip. Comparison bytes describe
+the candidate range, not exact memory-bus traffic. Compare these alongside
+`xemu-work` submits, inclusive `Syn`/`Sub` timing and gameplay FPS.
+
+## Sparse vertex propagation and attribute freshness retained from RC5
+
+RC4's new measurements identified about 119–132 MiB of vertex-mirror copying
+per guest flip, taking about 11 ms in the sampled gameplay sections. Measured
+next-slot fence calls took about 0.17 ms. Both resolutions averaged about
+21 FPS, with different surface-download and scene workloads, so this is not
+a pure resolution-cost comparison. Vertex popping remained visible.
+
+RC5 tracks stale pages separately for each destination submission slot. After
+the existing destination fence wait, it copies contiguous runs of pages that
+slot needs, retaining a full first copy and the original flush/barrier path.
+Every actual mirror write marks the other slots stale. This preserves changes
+across three-slot histories as well as the tested two-slot configuration.
+Slot depth is captured once per renderer initialization; later requests apply
+on reinitialization, avoiding unallocated or stale live slot selection.
+
+A separate vertex layout-cache defect left RAM-backed attribute values stale
+when layout registers were unchanged. RC5 refreshes decoded values on cache
+hits, including stride-zero uniforms and provoking-vertex values later used
+as inline constants. Changed current uniform values mark shader inputs dirty;
+unchanged values retain their fast path. This fixes a reproducible source
+defect, not a confirmed explanation of every SSX 3 popping event.
+
+The `xemu-vram` counters remain: First measures initial full copies; Span now
+measures steady changed-page runs. Compare requested copy bytes/time, gameplay
+FPS and image quality with RC4. Existing fences, vertex read protection,
+required assertions and driver workarounds remain. No device FPS gain or
+60 FPS result is claimed before testing RC5.
+
+## Cached surface reuse and measurements retained from RC4
+
+RC3 still showed flashing/disappearing terrain or objects later in SSX 3,
+mainly at 1x and occasionally at 3x. Its later gameplay sections averaged
+22.76 FPS at 1x and 20.44 FPS at 3x. These sessions started hotter than the
+RC2 retests, so their rates do not isolate the effect of the RC3 changes.
+
+Source review found that the unchanged-surface texture-cache path restored
+a direct image view without restoring that texture unit's image layout.
+The texture cache is shared across units, so a different unit could inherit
+an unset or unrelated layout. RC4 refreshes the complete direct binding and
+restores depth sampling layout when needed. Driver eligibility and copy
+fallbacks remain in place. This corrects a reproducible state omission;
+whether it explains the remaining SSX 3 artifacts needs device confirmation.
+
+Optional bindless descriptors track their actual image/view/sampler identity,
+retire old recorded/submitted uses before an identity change, and forget
+memoized views before destruction. Texture fast paths revalidate draw setup
+if texture preparation submits work or ends the render pass. The device runs
+used bindless OFF; it remains OFF for the first RC4 regression check.
+
+New `xemu-vram` telemetry separates the actual next-slot fence wait from
+CPU vertex-mirror copying, including the bytes/runs/time of first full copies
+and later span copies. These are subregions of existing inclusive timers;
+do not add them to `Fen`. Copy selection, barriers and waits are unchanged.
+The measurements will guide the next performance change. No device FPS gain
+or 60 FPS result is claimed for RC4.
+
+## Vertex lifetime and timing fixes retained from RC3
+
+The RC2 device tests booted SSX 3 using Turnip. The later gameplay sections
+averaged 27.08 FPS at 1x and 22.08 FPS at 3x. The runs differ in thermal state,
+scene progression and active pacing, so this is not a fixed-workload GPU cost
+measurement. The user reported flashing/disappearing geometry and broken
+triangles, particularly at 1x.
+
+Source review found that already-uploaded, clean vertex pages could be read by
+a recorded draw without being registered in the command buffer's read bitmap.
+A later dirty upload could then overwrite those vertices before that draw
+executed. RC3 registers the actual vertex ranges at final buffer binding and
+reorder capture, including cached uploads and synchronization fast paths.
+Existing overwrite protection, fences and driver workarounds remain enabled.
+This fixes a reproducible lifetime defect; its effect on the reported SSX 3
+artifacts still requires device confirmation.
+
+Optional draw reordering also admits captured entries using the queue position
+after setup, since setup can flush the previous queue. Reordering stays off in
+the tested configuration.
+
+RC3 also prevents a completed GPU timestamp query set from contributing more
+than once. GPU timing changes are diagnostic corrections, not an FPS gain.
+No new frame skipping, fast-fence mode or rendering shortcut is enabled.
+Correctly protecting additional vertex reads may increase synchronization;
+measure performance and image quality together.
+
+## Startup fix retained from RC2
+
+RC1 failed ten launches during `qemu_init()` while trying to open another
+Android package's default `qemu.conf`. Android now passes `-no-user-config`,
+skipping QEMU's desktop config search while preserving explicit TOML settings,
+firmware, disks and game inputs. RC2 device logs confirmed successful SSX 3
+startup and gameplay with Turnip.
+
+Install RC10 over RC8/RC9 (or RC7) with the same package and signing certificate. Existing
+test-app setup and files are retained. The production app remains separate.
+
+## Changes retained from RC1
+
+- Vulkan draw flushing captures the four values used by its existing assertions
+  instead of copying the full 41,728-byte render snapshot. All assertions and
+  render-thread snapshots remain intact. Optimized native compilation reduced
+  the affected function's stack use from 42,712 to 1,000 bytes on the native
+  host and from 43,328 to 1,632 bytes in Android ARM64 object compilation.
+  Those stack comparisons use inspectable objects without LTO; the candidate
+  APK separately enables ThinLTO.
+- RGBA8 texture swizzling processes 2x2 blocks with one Morton-offset increment
+  per block. The ARM64 NEON path remains, and the block path also works on other
+  hosts. Other formats and 3D textures keep the generic conversion path.
+- The TCG condition/branch optimization retains a boolean result that may be
+  used after the branch and avoids rewriting comparisons with aliased operands.
+  Existing liveness analysis can still remove dead boolean results.
+- Android optimization controls emit explicit zero/one definitions. Their fresh
+  defaults preserve the previous effective enabled behavior. Existing CMake
+  caches with OFF now actually disable those paths. This candidate uses native
+  float, the corrected peephole and TB cache hints enabled; no new floating-point
+  shortcut has been introduced.
+- **Clear system cache** now includes the Vulkan SPIR-V, pipeline and shader-key
+  caches, allowing cold/warm comparisons. The driver identity file is retained.
+
+The build keeps required assertions and the existing Qualcomm/Mali driver
+workarounds. No custom driver is bundled. The tested Pocket S/Turnip combination boots SSX 3; that does not establish
+compatibility with all drivers or games.
+
+## Install
+
+The `profile` build uses release optimization, LTO and resource shrinking, is
+profileable and non-debuggable, and is signed with the local test certificate.
+It appears as **X1 BOX Test**, package `com.izzy2lost.x1box.dev`, version
+`1.2.11-pocket-s-rc10` (code 39). It installs alongside the production app and
+uses separate app data. It shares its package with development/debug builds;
+updating one of those requires the same test signing certificate.
+
+Verify the supplied SHA-256, then open the APK on the device or use:
+
+```sh
+adb install -r x1box-1.2.11-pocket-s-rc10-arm64-v8a.apk
+```
+
+Keep the normal app installed. Select your own firmware and games in the test
+app's setup flow. Do not clear the normal app's data to install the candidate.
+The delivery manifest records the exact APK hash and certificate fingerprint.
+
+## Next Pocket S session
+
+1. Keep the same Turnip driver used for the RC2 retests. Repeat the same rider
+   and downhill section in SSX 3, first at 1x and then at 3x. Continue through
+   the later section that showed vertex popping in earlier runs. Do not change other
+   graphics/performance options between RC9 and RC10. Warm the
+   scene before measurement and keep power/fan/charging settings and starting
+   temperature comparable.
+2. Record whether terrain/objects still flash or disappear, whether triangles
+   break, and the approximate time of any issue in the captured log. Record
+   FPS alongside audio, controls and image quality. RC10 does not claim 60 FPS
+   or a measured speedup on the device.
+3. If SSX 3 is stable, check PGR2 and the remaining titles below. Keep driver
+   comparisons and cold-cache runs separate from the first RC10 regression
+   check. Extend a promising configuration to 15 minutes for sustained
+   behavior. The FPS overlay does not establish emulation speed or frame-time
+   percentiles.
+
+| Game | Repeatable scene | Quality checks |
+| --- | --- | --- |
+| SSX 3 | Same rider and downhill route | Snow effects, terrain, transitions, music |
+| Project Gotham Racing 2 | Same car, track and camera | Reflections, textures, geometry, pacing |
+| Splinter Cell: Chaos Theory | Same checkpoint and night-vision sequence | Shadows, lighting, post-processing |
+| Tony Hawk's Pro Skater 3 | Same skater, level and route | Textures, effects, controls, music |
+| Dead or Alive 3 | Same fighters, arena and match opening | Animation, backgrounds, effects, audio |
+
+Capture the device identity and a startup/gameplay log if ADB is available:
+
+```sh
+adb shell getprop ro.product.model
+adb shell getprop ro.build.fingerprint
+adb shell getprop ro.soc.model
+adb logcat -v threadtime > pocket-s-rc10.log
+```
+
+Start log capture before opening the app and stop it with Ctrl-C after the run.
+The startup entries identify the actual Vulkan device, driver and API version.
+Report the game region/revision, test scene, cold/warm cache state, settings and
+approximate time of any issue along with the log. Compare a different driver only in a later, separately recorded run.
+
+## Reproduce cloud checks
+
+The repository's Android toolchain and Gradle daemon JVM requirements must be
+satisfied. From a fresh native configuration, `cd android && ./gradlew
+assembleProfile` builds the candidate variant. Confirm the CMake output shows
+the intended optimization controls; old cached OFF values are now effective.
+
+Run the existing DSP suite from a configured native build:
+
+```sh
+meson compile -C build test-xbox
+meson test -C build --suite xbox --no-rebuild
+```
+
+The additional regression fixtures are standalone and are not included in that
+Meson suite:
+
+```sh
+make -C tests/tcg/optimizer check
+make -C tests/xbox/swizzle check
+python3 tests/xbox/vulkan/snapshot-guard.py --build-dir build
+python3 tests/xbox/vulkan/snapshot-guard.py --build-dir build --thinlto
+python3 tests/xbox/vulkan/vertex-read-tracking.py --negative-control
+python3 tests/xbox/vulkan/vertex-read-tracking.py --sanitize
+python3 tests/xbox/vulkan/gpu-timestamps-test.py --build-dir build
+python3 tests/xbox/vulkan/gpu-timestamps-test.py --build-dir build --thinlto
+python3 tests/xbox/vulkan/surface-reuse-test.py --negative-control
+python3 tests/xbox/vulkan/surface-reuse-test.py --sanitize
+python3 tests/xbox/vulkan/vram-timing-test.py
+python3 tests/xbox/vulkan/vertex-propagation-test.py --negative-control
+python3 tests/xbox/vulkan/vertex-propagation-test.py --sanitize
+python3 tests/xbox/vulkan/vertex-cache-test.py --negative-control
+python3 tests/xbox/vulkan/vertex-cache-test.py --sanitize
+python3 tests/xbox/vulkan/vertex-sync-test.py --negative-control
+python3 tests/xbox/vulkan/vertex-sync-test.py --sanitize
+python3 tests/xbox/vulkan/primitive-cache-test.py --negative-control
+python3 tests/xbox/vulkan/primitive-cache-test.py --sanitize
+python3 tests/xbox/vulkan/immediate-values-test.py --negative-control
+python3 tests/xbox/vulkan/immediate-values-test.py --sanitize
+python3 tests/xbox/vulkan/shader-consumption-test.py --negative-control
+python3 tests/xbox/vulkan/shader-consumption-test.py --sanitize
+python3 tests/xbox/vulkan/uniform-copy-test.py --negative-control
+python3 tests/xbox/vulkan/uniform-copy-test.py --sanitize
+python3 tests/xbox/pgraph/index-batch-test.py --sanitize
+python3 tests/xbox/vulkan/uniform-freshness-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/texture-notification-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/surface-revival-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/image-upload-ordering-test.py --sanitize --negative-control
+python3 tests/xbox/vulkan/dynamic-state-test.py --sanitize --negative-control
+python3 tests/xbox/audio/audio-vp-test.py --negative-control
+python3 tests/xbox/audio/dsp-engines-test.py
+python3 tests/xbox/android-startup/test-startup.py --build-dir build
+```
+
+See the fixture READMEs for compiler, baseline-comparison and coverage details.
+The startup fixture must run as an unprivileged user to verify real file-access
+denials. It exercises extracted production argument/options/config code without
+booting an Xbox or creating an Android window.
+Cloud benchmarks measure host workloads; they do not predict device FPS.

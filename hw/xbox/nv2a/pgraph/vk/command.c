@@ -56,8 +56,10 @@ static void create_command_buffers(PGRAPHState *pg)
         vkAllocateCommandBuffers(r->device, &alloc_info, r->command_buffers));
 
     extern int xemu_get_submit_frames(void);
+    int requested_frames = xemu_get_submit_frames();
     r->current_frame = 0;
-    r->num_active_frames = xemu_get_submit_frames();
+    /* Slot buffers are allocated once. Later requests apply on reinit. */
+    r->num_active_frames = MAX(1, MIN(requested_frames, NUM_SUBMIT_FRAMES));
     r->command_buffer = r->command_buffers[0];
     r->aux_command_buffer = r->command_buffers[1];
     for (int i = 0; i < NUM_SUBMIT_FRAMES; i++) {

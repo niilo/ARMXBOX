@@ -1328,6 +1328,113 @@ static void bind_zeta_surface_as_texture(PGRAPHState *pg,
     texture->draw_time = surface->draw_time;
 }
 
+#if OPT_BINDLESS_TEXTURES
+static void update_bindless_texture_descriptor(PGRAPHState *pg,
+                                                TextureBinding *texture,
+                                                VkDescriptorImageInfo info)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    if (!r->bindless_textures_supported) {
+        return;
+    }
+    if (texture->bindless_image_info.imageView == info.imageView &&
+        texture->bindless_image_info.imageLayout == info.imageLayout &&
+        texture->bindless_image_info.sampler == info.sampler) {
+        return;
+    }
+
+    if (texture->bindless_descriptor_used) {
+        /*
+         * Waiting for submitted frames alone leaves recorded draws using
+         * this shared slot. Retire the open command buffer before changing
+         * its identity, even on UPDATE_AFTER_BIND capable drivers.
+         */
+        pgraph_vk_finish(pg, VK_FINISH_REASON_SURFACE_DOWN);
+        pgraph_vk_flush_all_frames(pg);
+    }
+
+    VkWriteDescriptorSet write = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = r->bindless_descriptor_set,
+        .dstBinding = texture->bindless_binding,
+        .dstArrayElement = texture->bindless_slot,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = 1,
+        .pImageInfo = &info,
+    };
+    vkUpdateDescriptorSets(r->device, 1, &write, 0, NULL);
+    texture->bindless_image_info = info;
+    texture->bindless_descriptor_used = false;
+}
+#endif
+
+void pgraph_vk_invalidate_surface_bindless_view(PGRAPHVkState *r,
+                                                VkImageView view)
+{
+#if OPT_BINDLESS_TEXTURES
+    if (!r->bindless_textures_supported) {
+        return;
+    }
+
+    /* Surface destruction has already retired every old use of this view. */
+    TextureBinding *texture;
+    QTAILQ_FOREACH(texture, &r->texture_active_list, active_entry) {
+        if (texture->bindless_image_info.imageView == view) {
+            memset(&texture->bindless_image_info, 0,
+                   sizeof(texture->bindless_image_info));
+            texture->bindless_descriptor_used = false;
+        }
+    }
+#else
+    (void)r;
+    (void)view;
+#endif
+}
+
+static void bind_surface_texture_direct(PGRAPHState *pg, int texture_idx,
+                                        SurfaceBinding *surface,
+                                        TextureBinding *texture,
+                                        bool prepare_image)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+    VkImageLayout layout;
+
+    /*
+     * Texture cache entries are shared between units, but descriptor state
+     * belongs to each unit. An unchanged draw_time does not establish that
+     * this unit has the right view/layout, or that a sampled depth surface
+     * has not since been rebound as an attachment.
+     */
+    if (surface->color) {
+        layout = VK_IMAGE_LAYOUT_GENERAL;
+        if (prepare_image) {
+            bind_surface_as_texture(pg, surface, texture);
+        }
+    } else {
+        layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        if (prepare_image || surface->image_layout != layout) {
+            bind_zeta_surface_as_texture(pg, surface, texture);
+        }
+    }
+
+    r->tex_surface_direct[texture_idx] = true;
+    r->tex_surface_direct_views[texture_idx] = surface->image_view;
+    r->tex_surface_direct_layout[texture_idx] = layout;
+    r->texture_bindings_changed = true;
+
+#if OPT_BINDLESS_TEXTURES
+    if (r->bindless_textures_supported) {
+        VkDescriptorImageInfo info = {
+            .imageLayout = layout,
+            .imageView = surface->image_view,
+            .sampler = texture->sampler,
+        };
+        update_bindless_texture_descriptor(pg, texture, info);
+    }
+#endif
+}
+
 static void copy_surface_to_texture(PGRAPHState *pg, SurfaceBinding *surface,
                                     TextureBinding *texture)
 {
@@ -1690,7 +1797,10 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
     bool possibly_dirty = false;
     bool possibly_dirty_checked = false;
     bool surface_to_texture = false;
-    if (r->tex_surface_direct[texture_idx]) {
+    const bool was_direct = r->tex_surface_direct[texture_idx];
+    const VkImageView previous_direct_view =
+        r->tex_surface_direct_views[texture_idx];
+    if (was_direct) {
         /* The descriptor may still reference the surface image.  Ensure a
          * transition back to the texture cache refreshes its image view and
          * layout even when the cached TextureBinding itself is unchanged. */
@@ -1883,50 +1993,15 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                 bool can_direct_bind = can_bind_surface_direct(r, surface);
 
                 if (can_direct_bind) {
-                    VkImageLayout direct_layout;
-                    if (surface->color) {
-                        bind_surface_as_texture(pg, surface, snode);
-                        direct_layout = VK_IMAGE_LAYOUT_GENERAL;
-                    } else {
-                        bind_zeta_surface_as_texture(pg, surface, snode);
-                        direct_layout =
-                            VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-                    }
-                    r->tex_surface_direct[texture_idx] = true;
-                    r->tex_surface_direct_views[texture_idx] =
-                        surface->image_view;
-                    r->tex_surface_direct_layout[texture_idx] = direct_layout;
-                    r->texture_bindings_changed = true;
-#if OPT_BINDLESS_TEXTURES
-                    if (r->bindless_textures_supported) {
-                        VkDescriptorImageInfo bl_info = {
-                            .imageLayout = direct_layout,
-                            .imageView = surface->image_view,
-                            .sampler = snode->sampler,
-                        };
-                        VkWriteDescriptorSet bl_write = {
-                            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                            .dstSet = r->bindless_descriptor_set,
-                            .dstBinding = snode->bindless_binding,
-                            .dstArrayElement = snode->bindless_slot,
-                            .descriptorType =
-                                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                            .descriptorCount = 1,
-                            .pImageInfo = &bl_info,
-                        };
-                        vkUpdateDescriptorSets(r->device, 1, &bl_write, 0,
-                                               NULL);
-                    }
-#endif
+                    bind_surface_texture_direct(pg, texture_idx, surface,
+                                                 snode, true);
                 } else {
                     copy_surface_to_texture(pg, surface, snode);
                 }
                 did_s2t_copy = true;
             } else if (can_bind_surface_direct(r, surface)) {
-                // Same draw_time: surface hasn't changed, reuse direct view
-                r->tex_surface_direct[texture_idx] = true;
-                r->tex_surface_direct_views[texture_idx] =
-                    surface->image_view;
+                bind_surface_texture_direct(pg, texture_idx, surface, snode,
+                    !was_direct || previous_direct_view != surface->image_view);
             }
         } else {
             if (was_surface_copy ||
@@ -1939,6 +2014,16 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
                 snode->draw_time = 0;
                 did_upload = true;
             }
+#if OPT_BINDLESS_TEXTURES
+            if (r->bindless_textures_supported) {
+                VkDescriptorImageInfo info = {
+                    .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    .imageView = snode->image_view,
+                    .sampler = snode->sampler,
+                };
+                update_bindless_texture_descriptor(pg, snode, info);
+            }
+#endif
             snode->possibly_dirty = false;
         }
 
@@ -2239,16 +2324,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
             .imageView = snode->image_view,
             .sampler = snode->sampler,
         };
-        VkWriteDescriptorSet bl_write = {
-            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            .dstSet = r->bindless_descriptor_set,
-            .dstBinding = bl_binding,
-            .dstArrayElement = snode->bindless_slot,
-            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = 1,
-            .pImageInfo = &bl_info,
-        };
-        vkUpdateDescriptorSets(r->device, 1, &bl_write, 0, NULL);
+        update_bindless_texture_descriptor(pg, snode, bl_info);
     }
 #endif
 
@@ -2258,38 +2334,7 @@ static void create_texture(PGRAPHState *pg, int texture_idx)
         bool can_direct_bind = can_bind_surface_direct(r, surface);
 
         if (can_direct_bind) {
-            VkImageLayout direct_layout;
-            if (surface->color) {
-                bind_surface_as_texture(pg, surface, snode);
-                direct_layout = VK_IMAGE_LAYOUT_GENERAL;
-            } else {
-                bind_zeta_surface_as_texture(pg, surface, snode);
-                direct_layout =
-                    VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-            }
-            r->tex_surface_direct[texture_idx] = true;
-            r->tex_surface_direct_views[texture_idx] = surface->image_view;
-            r->tex_surface_direct_layout[texture_idx] = direct_layout;
-#if OPT_BINDLESS_TEXTURES
-            if (r->bindless_textures_supported) {
-                VkDescriptorImageInfo bl_info = {
-                    .imageLayout = direct_layout,
-                    .imageView = surface->image_view,
-                    .sampler = snode->sampler,
-                };
-                VkWriteDescriptorSet bl_write = {
-                    .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                    .dstSet = r->bindless_descriptor_set,
-                    .dstBinding = snode->bindless_binding,
-                    .dstArrayElement = snode->bindless_slot,
-                    .descriptorType =
-                        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-                    .descriptorCount = 1,
-                    .pImageInfo = &bl_info,
-                };
-                vkUpdateDescriptorSets(r->device, 1, &bl_write, 0, NULL);
-            }
-#endif
+            bind_surface_texture_direct(pg, texture_idx, surface, snode, true);
         } else {
             copy_surface_to_texture(pg, surface, snode);
         }
@@ -2320,6 +2365,11 @@ static void update_timestamps(PGRAPHVkState *r)
     for (int i = 0; i < ARRAY_SIZE(r->texture_bindings); i++) {
         if (r->texture_bindings[i]) {
             r->texture_bindings[i]->submit_time = r->submit_count;
+#if OPT_BINDLESS_TEXTURES
+            if (r->bindless_textures_supported) {
+                r->texture_bindings[i]->bindless_descriptor_used = true;
+            }
+#endif
         }
     }
 }
@@ -2338,6 +2388,16 @@ bool pgraph_vk_check_textures_fast_skip(PGRAPHState *pg)
     return true;
 }
 
+static float texture_uniform_scale(const TextureBinding *binding)
+{
+    if (!binding) {
+        return 1.0f;
+    }
+    BasicColorFormatInfo format =
+        kelvin_color_format_info_map[binding->key.state.color_format];
+    return format.linear ? binding->key.scale : 1.0f;
+}
+
 void pgraph_vk_bind_textures(NV2AState *d)
 {
     NV2A_VK_DGROUP_BEGIN("%s", __func__);
@@ -2345,13 +2405,16 @@ void pgraph_vk_bind_textures(NV2AState *d)
     PGRAPHState *pg = &d->pgraph;
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    r->texture_bindings_changed = false;
-
     if (!check_textures_dirty(pg)) {
         NV2A_VK_DPRINTF("Not dirty");
         NV2A_VK_DGROUP_END();
         update_timestamps(r);
         return;
+    }
+
+    float previous_scales[NV2A_MAX_TEXTURES];
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        previous_scales[i] = texture_uniform_scale(r->texture_bindings[i]);
     }
 
     resolve_possibly_dirty_textures(d);
@@ -2433,6 +2496,13 @@ void pgraph_vk_bind_textures(NV2AState *d)
         pg->texture_dirty[i] = false;
     }
 
+    for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
+        if (previous_scales[i] !=
+            texture_uniform_scale(r->texture_bindings[i])) {
+            r->uniforms_changed = true;
+        }
+    }
+
     if (r->texture_bindings_changed) {
         r->pipeline_state_dirty = true;
     }
@@ -2455,6 +2525,8 @@ static void texture_cache_entry_init(Lru *lru, LruNode *node, const void *state)
     snode->seq = ++r->texture_binding_seq;
 
 #if OPT_BINDLESS_TEXTURES
+    memset(&snode->bindless_image_info, 0, sizeof(snode->bindless_image_info));
+    snode->bindless_descriptor_used = false;
     if (r->bindless_textures_supported) {
         snode->bindless_slot = 0;
         for (int w = 0; w < MAX_BINDLESS_TEXTURES / 64; w++) {
@@ -2560,6 +2632,10 @@ static void texture_cache_release_node_resources(PGRAPHVkState *r, TextureBindin
     }
     snode->image = VK_NULL_HANDLE;
     snode->allocation = VK_NULL_HANDLE;
+#if OPT_BINDLESS_TEXTURES
+    memset(&snode->bindless_image_info, 0, sizeof(snode->bindless_image_info));
+    snode->bindless_descriptor_used = false;
+#endif
 }
 
 static bool texture_cache_entry_pre_evict(Lru *lru, LruNode *node)

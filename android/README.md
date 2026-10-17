@@ -4,6 +4,11 @@ This directory contains the Android frontend and native build for xemu. The
 Android entry point in `app/src/main/cpp/xemu_android.cpp` integrates the xemu
 core with SDL3 and the Android Vulkan/OpenGL rendering paths.
 
+The [v1.2.11 Pocket S findings and continuation plan](../docs/devel/pocket-s-performance.md)
+record the selected CPU configuration, SSX 3 measurements, rendering/audio work
+and the next optimization targets. [Release notes](../docs/releases/v1.2.11.md)
+explain the downloadable APKs and installation.
+
 ## Toolchain
 Android builds support both the Linux Docker image in `../docker/` and a
 native macOS toolchain. They share source code and Android dependency versions,

@@ -806,8 +806,10 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
         ;
     struct DescSetCacheKey desc_key;
     int desc_slot = -1;
-    if (use_desc_cache) {
+    if (ds_include_samplers) {
         make_desc_set_cache_key(r, layouts, &desc_key);
+    }
+    if (use_desc_cache) {
         desc_slot = fast_hash((const uint8_t *)&desc_key, sizeof(desc_key)) %
                     DESC_SET_CACHE_SIZE;
         if (reuse_cached_descriptor_set(r, desc_slot, &desc_key)) {
@@ -918,9 +920,11 @@ void pgraph_vk_update_descriptor_sets(PGRAPHState *pg)
 
         vkUpdateDescriptorSets(r->device, 6, descriptor_writes, 0, NULL);
 
-        r->desc_set_cache[desc_slot].key = desc_key;
-        r->desc_set_cache[desc_slot].epoch = r->desc_set_cache_epoch;
-        r->desc_set_cache[desc_slot].index = *ds_index_ptr;
+        if (use_desc_cache) {
+            r->desc_set_cache[desc_slot].key = desc_key;
+            r->desc_set_cache[desc_slot].epoch = r->desc_set_cache_epoch;
+            r->desc_set_cache[desc_slot].index = *ds_index_ptr;
+        }
     }
 
     r->need_descriptor_rebind = false;
@@ -1685,6 +1689,9 @@ void pgraph_vk_update_shader_uniforms(PGRAPHState *pg)
         r->last_vsh_uniform_hash = vsh_hash;
         r->last_psh_uniform_hash = psh_hash;
     }
+
+    r->uniforms_primitive_is_polygon =
+        pg->primitive_mode >= PRIM_TYPE_TRIANGLES;
 
     NV2A_VK_DGROUP_END();
 }

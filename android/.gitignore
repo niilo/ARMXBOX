@@ -1,5 +1,6 @@
 # Android/Gradle
 .gradle/
+.kotlin/
 .gradle-macos/
 build/
 build-macos/

@@ -37,6 +37,9 @@ extern "C" void xemu_set_fast_fences(bool enable);
 extern "C" bool xemu_get_fast_fences(void);
 extern "C" void xemu_set_fp_jit(bool enable);
 extern "C" bool xemu_get_fp_jit(void);
+extern "C" void xemu_fpu_profile_init(bool enabled);
+extern "C" bool xemu_fpu_profile_is_enabled(void);
+extern "C" bool xemu_x87_native_helpers_enabled(void);
 extern "C" void xemu_set_draw_reorder(bool enable);
 extern "C" bool xemu_get_draw_reorder(void);
 extern "C" void xemu_set_draw_merge(bool enable);
@@ -1080,14 +1083,36 @@ static SetupFiles SyncSetupFiles() {
   bool fp_safe = GetPrefBool(env, activity, "fp_safe", true);
   xemu_set_fp_safe(fp_safe);
   __android_log_print(ANDROID_LOG_INFO, "xemu-android",
-                      "FP safe (native arithmetic): %s", fp_safe ? "ON" : "OFF");
+                      "Legacy FP safe preference: %s", fp_safe ? "ON" : "OFF");
 
   bool fp_jit = GetPrefBool(env, activity, "setting_hard_fpu",
                              GetPrefBool(env, activity, "fp_jit", true));
   ds.fp_jit = fp_jit;
   xemu_set_fp_jit(fp_jit);
   __android_log_print(ANDROID_LOG_INFO, "xemu-android",
-                      "FP JIT (native storage + inline ops): %s", fp_jit ? "ON" : "OFF");
+                      "FP JIT preference: %s", fp_jit ? "ON" : "OFF");
+
+  /* Configure before QEMU creates the vCPU; counters belong to each thread. */
+  char cpu_profile_property[PROP_VALUE_MAX] = {};
+  bool cpu_profile_enabled = XEMU_ENABLE_CPU_PROFILE &&
+      GetPrefBool(env, activity, "setting_cpu_profile_v2", true);
+  if (__system_property_get("debug.xemu.cpu.profile",
+                            cpu_profile_property) > 0 &&
+      cpu_profile_property[0] == '0') {
+    cpu_profile_enabled = false;
+  }
+  xemu_fpu_profile_init(cpu_profile_enabled);
+#if defined(__aarch64__)
+  __android_log_print(ANDROID_LOG_INFO, "xemu-cpu-mode",
+                      "host=arm64 x87_storage=80bit x87_inline_fp=off "
+                      "native_x87_helpers=%s raw_x87_stack=%s "
+                      "x87_transfer=%s x87_pc24=%s helper_profile=%s",
+                      xemu_x87_native_helpers_enabled() ? "on" : "off",
+                      XEMU_OPT_X87_STACK ? "on" : "off",
+                      XEMU_OPT_X87_TRANSFER ? "on" : "off",
+                      XEMU_OPT_X87_PC24 ? "on" : "off",
+                      xemu_fpu_profile_is_enabled() ? "sampled" : "off");
+#endif
 
   bool fast_fences = GetPrefBool(env, activity, "fast_fences", false);
   xemu_set_fast_fences(fast_fences);
@@ -1578,6 +1603,11 @@ extern "C" int SDL_main(int argc, char* argv[]) {
 
     std::vector<std::string> arg_storage;
     arg_storage.emplace_back("xemu");
+    /* Android loads xemu.toml above and supplies device paths explicitly.
+     * Skip QEMU's desktop config search: its compiled sysconfdir may name
+     * another package, which scoped storage rejects before machine startup.
+     */
+    arg_storage.emplace_back("-no-user-config");
     if (IsTcgTuningEnabled()) {
       const char* tcg_thread = GetTcgThreadFromEnv();
       int tcg_tb_size = GetTcgTbSizeFromEnv();

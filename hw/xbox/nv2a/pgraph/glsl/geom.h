@@ -51,6 +51,9 @@ typedef struct GenGeomGlslOptions {
 
 void pgraph_glsl_set_geom_state(PGRAPHState *pg, GeomState *geom);
 
+bool pgraph_glsl_primitive_mode_matches(PGRAPHState *pg,
+                                       const GeomState *state);
+
 bool pgraph_glsl_need_geom(const GeomState *state);
 
 MString *pgraph_glsl_gen_geom(const GeomState *state, GenGeomGlslOptions opts);

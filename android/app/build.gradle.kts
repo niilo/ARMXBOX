@@ -44,12 +44,28 @@ val localCmakeArguments = listOf(
  */
 val vulkanValidationJniLibs =
   providers.environmentVariable("XEMU_VVL_JNILIBS").orNull
+val cpuProfileHooks = providers.gradleProperty("xemu.cpuProfileHooks")
+  .map { it.toBooleanStrict() }.getOrElse(false)
+val rawX87Stack = providers.gradleProperty("xemu.rawX87Stack")
+  .map { it.toBooleanStrict() }.getOrElse(false)
+val x87Transfer = providers.gradleProperty("xemu.x87Transfer")
+  .map { it.toBooleanStrict() }.getOrElse(false)
+val x87Pc24 = providers.gradleProperty("xemu.x87Pc24")
+  .map { it.toBooleanStrict() }.getOrElse(true)
+val pocketSCandidate = when {
+  !x87Pc24 -> if (x87Transfer) "rc14-transfer" else "rc14-control"
+  x87Transfer -> "rc14-combined"
+  else -> "rc14"
+}
 
 android {
   namespace = "com.izzy2lost.x1box"
   compileSdk = 36
   buildToolsVersion = "36.1.0"
   ndkVersion = "30.0.15729638"
+  buildFeatures {
+    buildConfig = true
+  }
 
   defaultConfig {
     applicationId = "com.izzy2lost.x1box"
@@ -61,8 +77,9 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 31
-    versionName = "1.2.10"
+    versionCode = 40
+    versionName = "1.2.11"
+    buildConfigField("boolean", "CPU_PROFILE_AVAILABLE", cpuProfileHooks.toString())
 
     ndk {
       abiFilters += listOf("arm64-v8a")
@@ -73,6 +90,10 @@ android {
         arguments += listOf(
           "-DXEMU_ANDROID_BUILD_ID=3",
           "-DXEMU_ENABLE_XISO_CONVERTER=ON",
+          "-DXEMU_ENABLE_CPU_PROFILE=${if (cpuProfileHooks) "ON" else "OFF"}",
+          "-DXEMU_OPT_X87_STACK=${if (rawX87Stack) "ON" else "OFF"}",
+          "-DXEMU_OPT_X87_TRANSFER=${if (x87Transfer) "ON" else "OFF"}",
+          "-DXEMU_OPT_X87_PC24=${if (x87Pc24) "ON" else "OFF"}",
           "-DCMAKE_C_FLAGS_DEBUG=-O2 -g0",
           "-DCMAKE_CXX_FLAGS_DEBUG=-O2 -g0",
           "-DCMAKE_C_FLAGS_RELWITHDEBINFO=-O2 -g0 -fvisibility=hidden",
@@ -123,6 +144,9 @@ android {
     }
     create("profile") {
       initWith(getByName("release"))
+      // Keep the locally signed test build alongside the production app.
+      applicationIdSuffix = ".dev"
+      versionNameSuffix = "-pocket-s-$pocketSCandidate" + if (cpuProfileHooks) "-cpu-profile" else ""
       isDebuggable = false
       isProfileable = true
       signingConfig = signingConfigs.getByName("debug")

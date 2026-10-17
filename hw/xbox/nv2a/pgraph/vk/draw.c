@@ -1221,12 +1221,30 @@ static bool check_render_pass_dirty(PGRAPHState *pg)
                   sizeof(state)) != 0;
 }
 
+static bool vertex_input_matches_pipeline(const PGRAPHVkState *r)
+{
+    return r->pipeline_binding && !r->pipeline_binding->key.clear &&
+           r->num_active_vertex_attribute_descriptions ==
+               r->pipeline_num_active_attr_descs &&
+           r->num_active_vertex_binding_descriptions ==
+               r->pipeline_num_active_bind_descs &&
+           !memcmp(r->vertex_attribute_descriptions,
+                   r->pipeline_binding->key.attribute_descriptions,
+                   r->num_active_vertex_attribute_descriptions *
+                       sizeof(r->vertex_attribute_descriptions[0])) &&
+           !memcmp(r->vertex_binding_descriptions,
+                   r->pipeline_binding->key.binding_descriptions,
+                   r->num_active_vertex_binding_descriptions *
+                       sizeof(r->vertex_binding_descriptions[0]));
+}
+
 // Quickly check for any state changes that would require more analysis
 static bool check_pipeline_dirty(PGRAPHState *pg)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (!r->pipeline_binding || r->shader_bindings_changed ||
+    if (!r->pipeline_binding || r->pipeline_binding->key.clear ||
+        r->shader_bindings_changed ||
         r->texture_bindings_changed || r->pipeline_state_dirty ||
         check_render_pass_dirty(pg)) {
         r->pipeline_state_dirty = false;
@@ -1250,14 +1268,7 @@ static bool check_pipeline_dirty(PGRAPHState *pg)
     }
 #endif
 
-    if (memcmp(r->vertex_attribute_descriptions,
-               r->pipeline_binding->key.attribute_descriptions,
-               r->num_active_vertex_attribute_descriptions *
-                   sizeof(r->vertex_attribute_descriptions[0])) ||
-        memcmp(r->vertex_binding_descriptions,
-               r->pipeline_binding->key.binding_descriptions,
-               r->num_active_vertex_binding_descriptions *
-                   sizeof(r->vertex_binding_descriptions[0]))) {
+    if (!vertex_input_matches_pipeline(r)) {
         return true;
     }
 
@@ -1350,6 +1361,26 @@ static void init_pipeline_key(PGRAPHState *pg, PipelineKey *key)
 #endif
 }
 
+/*
+ * Transform constants and the lighting context live outside the register
+ * file, so writing them never bumps any_reg_gen. A draw that skips the
+ * uniform update (the super fast path, a merged draw) must still take it
+ * when they changed, or it renders with the previous draw's constants: an
+ * object keeps its shape but loses its lighting for a frame or two, seen as
+ * intermittent flicker in many games. These are the flags
+ * pgraph_vk_update_shader_uniforms() consumes.
+ */
+static bool draw_constants_dirty(PGRAPHState *pg)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    /* Rewritten points/lines can share shaders but differ in polygon offset. */
+    return pg->vsh_constants_any_dirty || pg->ltctxa_any_dirty ||
+           pg->ltctxb_any_dirty || pg->ltc1_any_dirty ||
+           r->uniforms_primitive_is_polygon !=
+               (pg->primitive_mode >= PRIM_TYPE_TRIANGLES);
+}
+
 static void create_pipeline(PGRAPHState *pg)
 {
     NV2A_VK_DGROUP_BEGIN("Creating pipeline");
@@ -1357,7 +1388,7 @@ static void create_pipeline(PGRAPHState *pg)
     NV2AState *d = container_of(pg, NV2AState, pgraph);
     PGRAPHVkState *r = pg->vk_renderer_state;
 
-    if (r->pipeline_binding &&
+    if (r->pipeline_binding && !r->pipeline_binding->key.clear &&
         !r->shader_bindings_changed &&
         !r->pipeline_state_dirty &&
         pg->texture_state_gen == r->last_texture_state_gen &&
@@ -1365,7 +1396,16 @@ static void create_pipeline(PGRAPHState *pg)
         !check_render_pass_dirty(pg) &&
         pg->shader_state_gen == r->last_shader_state_gen &&
         pg->pipeline_state_gen == r->last_pipeline_state_gen &&
-        pg->primitive_mode == r->shader_binding->state.geom.primitive_mode) {
+        pg->vertex_attr_gen == r->pipeline_vertex_attr_gen &&
+        vertex_input_matches_pipeline(r) &&
+        pgraph_glsl_vertex_attrs_match(pg, &r->shader_binding->state.vsh) &&
+        pgraph_glsl_primitive_mode_matches(pg,
+                                          &r->shader_binding->state.geom)) {
+        /* Registers can change uniform values without changing the pipeline. */
+        if (r->uniforms_changed || pg->any_reg_gen != r->last_any_reg_gen ||
+            draw_constants_dirty(pg)) {
+            pgraph_vk_update_shader_uniforms(pg);
+        }
         OPT_STAT_INC(pipeline_early_hits);
         NV2A_VK_DGROUP_END();
         return;
@@ -1385,14 +1425,18 @@ static void create_pipeline(PGRAPHState *pg)
 #if OPT_VALIDATE_GEN_COUNTERS
     if (!pg->program_data_dirty && r->shader_binding &&
         pg->shader_state_gen == r->last_shader_state_gen &&
-        pg->primitive_mode == r->shader_binding->state.geom.primitive_mode) {
+        pgraph_glsl_vertex_attrs_match(pg, &r->shader_binding->state.vsh) &&
+        pgraph_glsl_primitive_mode_matches(pg,
+                                          &r->shader_binding->state.geom)) {
         assert(!pgraph_glsl_check_shader_state_dirty(pg,
                                                      &r->shader_binding->state));
     }
 #endif
     if (pg->program_data_dirty || !r->shader_binding ||
         pg->shader_state_gen != r->last_shader_state_gen ||
-        pg->primitive_mode != r->shader_binding->state.geom.primitive_mode) {
+        !pgraph_glsl_vertex_attrs_match(pg, &r->shader_binding->state.vsh) ||
+        !pgraph_glsl_primitive_mode_matches(pg,
+                                           &r->shader_binding->state.geom)) {
         pgraph_vk_bind_shaders(pg);
         r->last_shader_state_gen = pg->shader_state_gen;
     } else {
@@ -2367,7 +2411,7 @@ static void end_render_pass(PGRAPHVkState *r)
 
 static void gpu_ts_readback(PGRAPHVkState *r, int frame)
 {
-    if (!r->gpu_ts_supported) {
+    if (!r->gpu_ts_supported || !r->gpu_ts_pending[frame]) {
         return;
     }
 
@@ -2382,6 +2426,12 @@ static void gpu_ts_readback(PGRAPHVkState *r, int frame)
     if (res != VK_SUCCESS) {
         return;
     }
+    /*
+     * A synchronous finish reads its queries immediately, while slot reuse
+     * or flush may visit the same submitted slot again for resource cleanup.
+     * Account for each recording once without changing that ownership flag.
+     */
+    r->gpu_ts_pending[frame] = false;
 
     uint64_t cb_start = r->gpu_ts_results[0];
     uint64_t cb_end = r->gpu_ts_results[1];
@@ -2503,16 +2553,6 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
         opt_stats_log_and_reset();
     }
 
-    int desired_frames = g_xemu_submit_frames;
-    if (desired_frames != r->num_active_frames) {
-        pgraph_vk_flush_all_frames(pg);
-        r->num_active_frames = desired_frames;
-        r->current_frame = 0;
-        r->command_buffer = r->command_buffers[0];
-        r->aux_command_buffer = r->command_buffers[1];
-        r->command_buffer_fence = r->frame_fences[0];
-    }
-
     assert(!r->in_draw);
     assert(r->debug_depth == 0);
 
@@ -2596,6 +2636,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
         r->in_aux_command_buffer = false;
         if (r->gpu_ts_supported) {
             r->gpu_ts_rp_counts[r->current_frame] = r->gpu_ts_rp_index;
+            r->gpu_ts_pending[r->current_frame] = true;
         }
 
         /* If deferred surface downloads are pending (recorded into the aux
@@ -2821,9 +2862,18 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
             r->frame_enqueued[next_frame] = false;
 
             if (qatomic_read(&r->frame_submitted[next_frame])) {
+#if NV2A_PERF_LOG
+                int64_t next_wait_start = nv2a_clock_ns();
+#endif
                 VK_CHECK(vkWaitForFences(r->device, 1,
                                          &r->frame_fences[next_frame],
                                          VK_TRUE, UINT64_MAX));
+#if NV2A_PERF_LOG
+                int64_t next_wait_ns = nv2a_clock_ns() - next_wait_start;
+                g_nv2a_stats.vram_working.next_wait_ns +=
+                    MAX(next_wait_ns, 0);
+                g_nv2a_stats.vram_working.next_wait_calls++;
+#endif
                 gpu_ts_readback(r, next_frame);
                 qatomic_set(&r->frame_submitted[next_frame], false);
 
@@ -2867,41 +2917,7 @@ void pgraph_vk_finish(PGRAPHState *pg, FinishReason finish_reason)
                 }
             }
 
-            {
-                FrameStagingState *cur_fs =
-                    &r->frame_staging[r->current_frame];
-                FrameStagingState *next_fs =
-                    &r->frame_staging[next_frame];
-
-                unsigned long bitmap_longs =
-                    BITS_TO_LONGS(r->bitmap_size);
-                memcpy(next_fs->uploaded_bitmap,
-                       cur_fs->uploaded_bitmap,
-                       bitmap_longs * sizeof(unsigned long));
-
-                next_fs->vertex_ram_flush_min = VK_WHOLE_SIZE;
-                next_fs->vertex_ram_flush_max = 0;
-
-                if (!next_fs->vertex_ram_initialized) {
-                    size_t total = cur_fs->vertex_ram.buffer_size;
-                    memcpy(next_fs->vertex_ram.mapped,
-                           cur_fs->vertex_ram.mapped, total);
-                    next_fs->vertex_ram_flush_min = 0;
-                    next_fs->vertex_ram_flush_max = total;
-                    next_fs->vertex_ram_initialized = true;
-                } else if (cur_fs->vertex_ram_propagate_min <
-                           cur_fs->vertex_ram_propagate_max) {
-                    size_t off = cur_fs->vertex_ram_propagate_min;
-                    size_t len = cur_fs->vertex_ram_propagate_max - off;
-                    memcpy(next_fs->vertex_ram.mapped + off,
-                           cur_fs->vertex_ram.mapped + off, len);
-                    next_fs->vertex_ram_flush_min = off;
-                    next_fs->vertex_ram_flush_max = off + len;
-                }
-
-                cur_fs->vertex_ram_propagate_min = VK_WHOLE_SIZE;
-                cur_fs->vertex_ram_propagate_max = 0;
-            }
+            pgraph_vk_propagate_vertex_ram(r, next_frame);
 
             r->current_frame = next_frame;
             r->command_buffer = r->command_buffers[next_frame * 2];
@@ -2955,6 +2971,7 @@ void pgraph_vk_begin_command_buffer(PGRAPHState *pg)
 
     if (r->gpu_ts_supported) {
         uint32_t base = r->current_frame * GPU_TS_QUERIES_PER_CB;
+        r->gpu_ts_pending[r->current_frame] = false;
         vkCmdResetQueryPool(r->command_buffer, r->gpu_ts_pool,
                             base, GPU_TS_QUERIES_PER_CB);
         vkCmdWriteTimestamp(r->command_buffer,
@@ -3052,19 +3069,19 @@ void pgraph_vk_end_nondraw_commands(PGRAPHState *pg, VkCommandBuffer cmd)
 // buffer. For other reasons though (like descriptor set amount, surface
 // changes, etc) we do flush often.
 
-/*
- * Transform constants and the lighting context live outside the register
- * file, so writing them never bumps any_reg_gen. A draw that skips the
- * uniform update (the super fast path, a merged draw) must still take it
- * when they changed, or it renders with the previous draw's constants: an
- * object keeps its shape but loses its lighting for a frame or two, seen as
- * intermittent flicker in many games. These are the flags
- * pgraph_vk_update_shader_uniforms() consumes.
- */
-static bool draw_constants_dirty(PGRAPHState *pg)
+
+static bool texture_bind_preserves_draw_state(const PGRAPHVkState *r)
 {
-    return pg->vsh_constants_any_dirty || pg->ltctxa_any_dirty ||
-           pg->ltctxb_any_dirty || pg->ltc1_any_dirty;
+    /*
+     * Texture preparation can end a pass or retire the open command buffer.
+     * Fast paths must revalidate before pushing constants or reusing setup.
+     */
+    return r->in_command_buffer && r->in_render_pass &&
+           r->framebuffer_index > 0 &&
+           r->current_framebuffer != VK_NULL_HANDLE &&
+           !r->framebuffer_dirty && !r->need_descriptor_rebind &&
+           !r->uniforms_changed && !r->pipeline_binding_changed &&
+           !r->shader_bindings_changed;
 }
 
 static void begin_pre_draw(PGRAPHState *pg)
@@ -3114,9 +3131,24 @@ static void begin_pre_draw(PGRAPHState *pg)
         else if (!r->push_descriptors_supported &&
                  pg->texture_state_gen != r->last_texture_state_gen) { OPT_STAT_INC(sfp_miss_tex_gen); sfp_ok = false; }
 #endif
-        else if (pg->non_dynamic_reg_gen != r->last_non_dynamic_reg_gen) { OPT_STAT_INC(sfp_miss_reg_gen); sfp_ok = false; }
-        else if (pg->primitive_mode != r->shader_binding->state.geom.primitive_mode) { OPT_STAT_INC(sfp_miss_prim_mode); sfp_ok = false; }
-        else if (pg->program_data_dirty) { OPT_STAT_INC(sfp_miss_prog_dirty); sfp_ok = false; }
+        else if (pg->non_dynamic_reg_gen != r->last_non_dynamic_reg_gen) {
+            OPT_STAT_INC(sfp_miss_reg_gen);
+            sfp_ok = false;
+        } else if (!vertex_input_matches_pipeline(r)) {
+            OPT_STAT_INC(sfp_miss_vtx_gen);
+            sfp_ok = false;
+        } else if (!pgraph_glsl_vertex_attrs_match(
+                     pg, &r->shader_binding->state.vsh)) {
+            OPT_STAT_INC(sfp_miss_vtx_gen);
+            sfp_ok = false;
+        } else if (!pgraph_glsl_primitive_mode_matches(
+                     pg, &r->shader_binding->state.geom)) {
+            OPT_STAT_INC(sfp_miss_prim_mode);
+            sfp_ok = false;
+        } else if (pg->program_data_dirty) {
+            OPT_STAT_INC(sfp_miss_prog_dirty);
+            sfp_ok = false;
+        }
 
         if (sfp_ok) {
             bool tex_vram_clean = (r->texture_vram_gen == r->last_texture_vram_gen);
@@ -3148,8 +3180,12 @@ static void begin_pre_draw(PGRAPHState *pg)
                     pgraph_vk_bind_textures(d_bl);
                     r->last_texture_state_gen = pg->texture_state_gen;
                     r->last_texture_vram_gen = r->texture_vram_gen;
-                    push_texture_indices(pg);
-                    OPT_STAT_INC(bindless_tex_fast);
+                    if (texture_bind_preserves_draw_state(r)) {
+                        push_texture_indices(pg);
+                        OPT_STAT_INC(bindless_tex_fast);
+                    } else {
+                        sfp_ok = false;
+                    }
                 }
                 else
 #endif
@@ -3161,7 +3197,8 @@ static void begin_pre_draw(PGRAPHState *pg)
                     r->last_texture_state_gen = pg->texture_state_gen;
                     r->last_texture_vram_gen = r->texture_vram_gen;
 
-                    if (pg->shader_state_gen != saved_shader_gen) {
+                    if (!texture_bind_preserves_draw_state(r) ||
+                        pg->shader_state_gen != saved_shader_gen) {
                         sfp_ok = false;
                     } else {
                         if (r->texture_bindings_changed) {
@@ -3308,7 +3345,10 @@ static void begin_pre_draw(PGRAPHState *pg)
         !r->uniforms_changed &&
         !draw_constants_dirty(pg) &&
         !pg->program_data_dirty &&
-        pg->primitive_mode == r->shader_binding->state.geom.primitive_mode &&
+        vertex_input_matches_pipeline(r) &&
+        pgraph_glsl_vertex_attrs_match(pg, &r->shader_binding->state.vsh) &&
+        pgraph_glsl_primitive_mode_matches(pg,
+                                          &r->shader_binding->state.geom) &&
         pg->non_dynamic_reg_gen == r->last_non_dynamic_reg_gen &&
         (pg->texture_state_gen != r->last_texture_state_gen ||
          r->texture_vram_gen != r->last_texture_vram_gen)) {
@@ -3317,7 +3357,8 @@ static void begin_pre_draw(PGRAPHState *pg)
         pgraph_vk_bind_textures(d_tex);
         r->last_texture_state_gen = pg->texture_state_gen;
         r->last_texture_vram_gen = r->texture_vram_gen;
-        bool bl_ok = (pg->any_reg_gen == r->last_any_reg_gen);
+        bool bl_ok = texture_bind_preserves_draw_state(r) &&
+                     pg->any_reg_gen == r->last_any_reg_gen;
         if (bl_ok && pg->vertex_attr_gen != r->pipeline_vertex_attr_gen) {
             bool bl_count_match =
                 r->num_active_vertex_attribute_descriptions == r->pipeline_num_active_attr_descs &&
@@ -3388,7 +3429,10 @@ static void begin_pre_draw(PGRAPHState *pg)
 #endif
         pg->shader_state_gen == r->last_shader_state_gen &&
         pg->pipeline_state_gen == r->last_pipeline_state_gen &&
-        pg->primitive_mode == r->shader_binding->state.geom.primitive_mode &&
+        vertex_input_matches_pipeline(r) &&
+        pgraph_glsl_vertex_attrs_match(pg, &r->shader_binding->state.vsh) &&
+        pgraph_glsl_primitive_mode_matches(pg,
+                                          &r->shader_binding->state.geom) &&
         !pg->program_data_dirty) {
         if (pg->vertex_attr_gen != r->pipeline_vertex_attr_gen) {
             if (g_vaf_disabled ||
@@ -3424,6 +3468,9 @@ static void begin_pre_draw(PGRAPHState *pg)
             pgraph_vk_bind_textures(d_mfp);
             r->last_texture_state_gen = pg->texture_state_gen;
             r->last_texture_vram_gen = r->texture_vram_gen;
+            if (!texture_bind_preserves_draw_state(r)) {
+                goto mfp_miss;
+            }
             push_texture_indices(pg);
         } else
 #endif
@@ -3433,6 +3480,9 @@ static void begin_pre_draw(PGRAPHState *pg)
             pgraph_vk_bind_textures(d_mfp_push);
             r->last_texture_state_gen = pg->texture_state_gen;
             r->last_texture_vram_gen = r->texture_vram_gen;
+            if (!texture_bind_preserves_draw_state(r)) {
+                goto mfp_miss;
+            }
             if (r->texture_bindings_changed) {
                 for (int i = 0; i < NV2A_MAX_TEXTURES; i++) {
                     r->push_tex_infos[i] = (VkDescriptorImageInfo){
@@ -3677,8 +3727,12 @@ static void begin_draw(PGRAPHState *pg)
 #if OPT_DYNAMIC_STATES
         if (r->extended_dynamic_state_supported) {
             uint32_t setupraster = pgraph_vk_reg_r(pg, NV_PGRAPH_SETUPRASTER);
+            const uint32_t raster_mask = NV_PGRAPH_SETUPRASTER_CULLENABLE |
+                                         NV_PGRAPH_SETUPRASTER_CULLCTRL |
+                                         NV_PGRAPH_SETUPRASTER_FRONTFACE;
+            /* Other register bits do not change these dynamic commands. */
             if (!r->dyn_state.valid ||
-                setupraster != r->dyn_state.setupraster) {
+                ((setupraster ^ r->dyn_state.setupraster) & raster_mask)) {
                 VkCullModeFlags cull = VK_CULL_MODE_NONE;
                 if (setupraster & NV_PGRAPH_SETUPRASTER_CULLENABLE) {
                     uint32_t cull_face = GET_MASK(setupraster,
@@ -3708,8 +3762,12 @@ static void begin_draw(PGRAPHState *pg)
 
         if (r->extended_dynamic_state_supported) {
             uint32_t control_0 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_0);
+            const uint32_t depth_mask = NV_PGRAPH_CONTROL_0_ZENABLE |
+                                       NV_PGRAPH_CONTROL_0_ZWRITEENABLE |
+                                       NV_PGRAPH_CONTROL_0_ZFUNC |
+                                       NV_PGRAPH_CONTROL_0_STENCIL_WRITE_ENABLE;
             if (!r->dyn_state.valid ||
-                control_0 != r->dyn_state.control_0) {
+                ((control_0 ^ r->dyn_state.control_0) & depth_mask)) {
                 vkCmdSetDepthTestEnable(
                     r->command_buffer,
                     (control_0 & NV_PGRAPH_CONTROL_0_ZENABLE) ? VK_TRUE
@@ -3738,9 +3796,19 @@ static void begin_draw(PGRAPHState *pg)
 
             uint32_t control_1 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_1);
             uint32_t control_2 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_2);
+            const uint32_t stencil_mask =
+                NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE |
+                NV_PGRAPH_CONTROL_1_STENCIL_FUNC |
+                NV_PGRAPH_CONTROL_1_STENCIL_REF |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_READ |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_WRITE;
+            const uint32_t stencil_op_mask =
+                NV_PGRAPH_CONTROL_2_STENCIL_OP_FAIL |
+                NV_PGRAPH_CONTROL_2_STENCIL_OP_ZFAIL |
+                NV_PGRAPH_CONTROL_2_STENCIL_OP_ZPASS;
             if (!r->dyn_state.valid ||
-                control_1 != r->dyn_state.control_1 ||
-                control_2 != r->dyn_state.control_2) {
+                ((control_1 ^ r->dyn_state.control_1) & stencil_mask) ||
+                ((control_2 ^ r->dyn_state.control_2) & stencil_op_mask)) {
                 bool stencil_test_enable =
                     control_1 & NV_PGRAPH_CONTROL_1_STENCIL_TEST_ENABLE;
                 vkCmdSetStencilTestEnable(r->command_buffer,
@@ -3785,8 +3853,12 @@ static void begin_draw(PGRAPHState *pg)
             }
         } else {
             uint32_t control_1 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_1);
+            const uint32_t stencil_mask =
+                NV_PGRAPH_CONTROL_1_STENCIL_REF |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_READ |
+                NV_PGRAPH_CONTROL_1_STENCIL_MASK_WRITE;
             if (!r->dyn_state.valid ||
-                control_1 != r->dyn_state.control_1) {
+                ((control_1 ^ r->dyn_state.control_1) & stencil_mask)) {
                 uint32_t stencil_ref = GET_MASK(control_1,
                                                 NV_PGRAPH_CONTROL_1_STENCIL_REF);
                 uint32_t mask_read = GET_MASK(control_1,
@@ -3807,9 +3879,17 @@ static void begin_draw(PGRAPHState *pg)
         if (r->eds3_blend_supported) {
             uint32_t blend_reg = pgraph_vk_reg_r(pg, NV_PGRAPH_BLEND);
             uint32_t ctl0 = pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_0);
+            const uint32_t blend_mask = NV_PGRAPH_BLEND_EN |
+                                        NV_PGRAPH_BLEND_SFACTOR |
+                                        NV_PGRAPH_BLEND_DFACTOR |
+                                        NV_PGRAPH_BLEND_EQN;
+            const uint32_t color_mask = NV_PGRAPH_CONTROL_0_RED_WRITE_ENABLE |
+                                        NV_PGRAPH_CONTROL_0_GREEN_WRITE_ENABLE |
+                                        NV_PGRAPH_CONTROL_0_BLUE_WRITE_ENABLE |
+                                        NV_PGRAPH_CONTROL_0_ALPHA_WRITE_ENABLE;
             if (!r->dyn_state.valid ||
-                blend_reg != r->dyn_state.blend ||
-                ctl0 != r->dyn_state.color_write_control_0) {
+                ((blend_reg ^ r->dyn_state.blend) & blend_mask) ||
+                ((ctl0 ^ r->dyn_state.color_write_control_0) & color_mask)) {
                 VkBool32 blend_en =
                     (blend_reg & NV_PGRAPH_BLEND_EN) ? VK_TRUE : VK_FALSE;
                 vkCmdSetColorBlendEnableEXT(r->command_buffer, 0, 1, &blend_en);
@@ -3862,6 +3942,13 @@ static void begin_draw(PGRAPHState *pg)
 #if OPT_BINDLESS_TEXTURES
             push_texture_indices(pg);
 #endif
+            /*
+             * Pipeline and descriptors consume the current shader and texture
+             * state. Keep changes pending until here, including queued setup
+             * and repeated texture binds before descriptors are prepared.
+             */
+            r->shader_bindings_changed = false;
+            r->texture_bindings_changed = false;
         }
     }
 
@@ -3921,7 +4008,12 @@ static void copy_remapped_attributes_to_inline_buffer(PGRAPHState *pg,
                                                       uint32_t start_vertex,
                                                       uint32_t num_vertices);
 static void bind_vertex_buffer(PGRAPHState *pg, uint16_t inline_map,
-                               VkDeviceSize offset);
+                               VkDeviceSize offset, uint32_t min_element,
+                               uint32_t max_element);
+static void mark_vertex_buffer_reads(PGRAPHState *pg, uint16_t inline_map,
+                                      VkDeviceSize offset,
+                                      uint32_t min_element,
+                                      uint32_t max_element);
 
 static bool check_rt_as_texture_hazard(PGRAPHState *pg)
 {
@@ -4404,7 +4496,6 @@ static void flush_draw_queue_internal(NV2AState *d)
     uint32_t saved_texture_vram_gen = r->texture_vram_gen;
     bool saved_fb_dirty = r->framebuffer_dirty;
     bool saved_prog_dirty = pg->program_data_dirty;
-    bool saved_uniforms_changed = r->uniforms_changed;
     bool saved_shader_bindings_changed = r->shader_bindings_changed;
     bool saved_pipeline_state_dirty = r->pipeline_state_dirty;
     bool saved_need_descriptor_rebind = r->need_descriptor_rebind;
@@ -4494,7 +4585,8 @@ static void flush_draw_queue_internal(NV2AState *d)
             push_texture_indices(pg);
 #endif
         }
-        bind_vertex_buffer(pg, remap.attributes, 0);
+        bind_vertex_buffer(pg, remap.attributes, 0, min_element,
+                           max_element + 1);
 
         VkDeviceSize buffer_offset = pgraph_vk_update_index_buffer(
             pg, q->index_buf, index_data_size);
@@ -4581,7 +4673,7 @@ static void flush_draw_queue_internal(NV2AState *d)
             push_texture_indices(pg);
 #endif
         }
-        bind_vertex_buffer(pg, remap.attributes, 0);
+        bind_vertex_buffer(pg, remap.attributes, 0, min_start, max_end);
 
         if (prim_rw.num_indices > 0) {
             size_t rewrite_size = prim_rw.num_indices * sizeof(uint32_t);
@@ -4674,7 +4766,9 @@ flush_dq_restore:
     r->texture_vram_gen = saved_texture_vram_gen;
     r->framebuffer_dirty = saved_fb_dirty;
     pg->program_data_dirty = saved_prog_dirty;
-    r->uniforms_changed = saved_uniforms_changed;
+    /* Replayed draws replaced GPU constants after the caller's observation. */
+    r->immediate_attrs_valid = 0;
+    r->uniforms_changed = true;
     r->shader_bindings_changed = saved_shader_bindings_changed;
     r->pipeline_state_dirty = saved_pipeline_state_dirty;
     r->need_descriptor_rebind = saved_need_descriptor_rebind;
@@ -4705,9 +4799,16 @@ void pgraph_vk_flush_draw_queue(NV2AState *d)
 }
 
 static void snapshot_vertex_buffers(PGRAPHState *pg, ReorderWindowEntry *e,
-                                    uint16_t inline_map, VkDeviceSize offset)
+                                    uint16_t inline_map, VkDeviceSize offset,
+                                    uint32_t min_element,
+                                    uint32_t max_element)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
+    /*
+     * A queued entry already owns these bytes. finish() emits the window
+     * before submitting and clearing the read bitmap.
+     */
+    mark_vertex_buffer_reads(pg, inline_map, offset, min_element, max_element);
     e->num_vertex_bindings = r->num_active_vertex_binding_descriptions;
     for (int i = 0; i < e->num_vertex_bindings; i++) {
         int attr_idx = r->vertex_attribute_descriptions[i].location;
@@ -4922,7 +5023,8 @@ static bool try_snapshot_draw_arrays(NV2AState *d, ReorderWindowEntry *e)
     e->dynamic_offsets[1] = (uint32_t)r->uniform_buffer_offsets[1];
     e->pre_draw_skipped = false;
 
-    snapshot_vertex_buffers(pg, e, remap.attributes, 0);
+    snapshot_vertex_buffers(pg, e, remap.attributes, 0,
+                             pg->draw_arrays_min_start, max_element);
     snapshot_dynamic_state(pg, e);
     snapshot_push_constants(pg, e);
 
@@ -5070,7 +5172,8 @@ static bool try_snapshot_inline_elements(NV2AState *d, ReorderWindowEntry *e)
     e->dynamic_offsets[1] = (uint32_t)r->uniform_buffer_offsets[1];
     e->pre_draw_skipped = false;
 
-    snapshot_vertex_buffers(pg, e, remap.attributes, 0);
+    snapshot_vertex_buffers(pg, e, remap.attributes, 0, min_element,
+                             max_element + 1);
     snapshot_dynamic_state(pg, e);
     snapshot_push_constants(pg, e);
 
@@ -5445,6 +5548,9 @@ static void flush_reorder_window_internal(NV2AState *d)
 
     r->pipeline_binding = prev ? prev->pipeline_binding : NULL;
     r->pipeline_binding_changed = false;
+    /* Captured push constants need not match the next live draw's values. */
+    r->immediate_attrs_valid = 0;
+    r->uniforms_changed = true;
     r->color_drawn_in_cb = r->color_drawn_in_cb || (r->color_binding != NULL);
     r->zeta_drawn_in_cb = r->zeta_drawn_in_cb || (r->zeta_binding != NULL);
 
@@ -5520,7 +5626,12 @@ void pgraph_vk_draw_end(NV2AState *d)
         if (is_safe && w->count < REORDER_WINDOW_MAX) {
             pgraph_vk_flush_draw_queue(d);
 
-            ReorderWindowEntry *e = &w->entries[w->count];
+            /*
+             * Capturing may finish and empty the existing window. Do not
+             * retain an entry index from before that happens.
+             */
+            ReorderWindowEntry captured = {0};
+            ReorderWindowEntry *e = &captured;
             bool ok;
             if (pg->draw_arrays_length) {
                 ok = try_snapshot_draw_arrays(d, e);
@@ -5528,6 +5639,8 @@ void pgraph_vk_draw_end(NV2AState *d)
                 ok = try_snapshot_inline_elements(d, e);
             }
             if (ok) {
+                e = &w->entries[w->count];
+                *e = captured;
                 e->sequence_number = w->count;
 
                 int grp = -1;
@@ -6131,14 +6244,60 @@ static void pgraph_vk_debug_attrs(NV2AState *d)
 }
 #endif
 
+static void get_size_and_count_for_format(VkFormat fmt, size_t *size,
+                                          size_t *count);
+
+/*
+ * max_element is exclusive. Track reads when recording the actual binding,
+ * after setup can have finished a command buffer and cleared the bitmap.
+ * Clean, already-uploaded vertices need the same protection as new uploads.
+ */
+static void mark_vertex_buffer_reads(PGRAPHState *pg, uint16_t inline_map,
+                                      VkDeviceSize offset,
+                                      uint32_t min_element,
+                                      uint32_t max_element)
+{
+    PGRAPHVkState *r = pg->vk_renderer_state;
+
+    if (min_element >= max_element) {
+        return;
+    }
+
+    for (int i = 0; i < r->num_active_vertex_binding_descriptions; i++) {
+        const VkVertexInputAttributeDescription *attr =
+            &r->vertex_attribute_descriptions[i];
+        if (inline_map & (1 << attr->location)) {
+            continue;
+        }
+
+        VkDeviceSize stride = r->vertex_binding_descriptions[i].stride;
+        VkDeviceSize base = offset +
+                            r->vertex_attribute_offsets[attr->location];
+        size_t element_size, element_count;
+        get_size_and_count_for_format(attr->format, &element_size,
+                                      &element_count);
+        VkDeviceSize start = base + (VkDeviceSize)min_element * stride;
+        VkDeviceSize end = base + (VkDeviceSize)(max_element - 1) * stride +
+                           element_size * element_count;
+        size_t start_bit = start / TARGET_PAGE_SIZE;
+        size_t end_bit = TARGET_PAGE_ALIGN(end) / TARGET_PAGE_SIZE;
+
+        assert(end_bit <= r->bitmap_size);
+        bitmap_set(r->cb_vertex_pages, start_bit, end_bit - start_bit);
+    }
+}
+
 static void bind_vertex_buffer(PGRAPHState *pg, uint16_t inline_map,
-                               VkDeviceSize offset)
+                               VkDeviceSize offset, uint32_t min_element,
+                               uint32_t max_element)
 {
     PGRAPHVkState *r = pg->vk_renderer_state;
 
     if (r->num_active_vertex_binding_descriptions == 0) {
         return;
     }
+
+    mark_vertex_buffer_reads(pg, inline_map, offset, min_element, max_element);
 
     VkBuffer buffers[NV2A_VERTEXSHADER_ATTRIBUTES];
     VkDeviceSize offsets[NV2A_VERTEXSHADER_ATTRIBUTES];
@@ -6158,7 +6317,7 @@ static void bind_vertex_buffer(PGRAPHState *pg, uint16_t inline_map,
 
 static void bind_inline_vertex_buffer(PGRAPHState *pg, VkDeviceSize offset)
 {
-    bind_vertex_buffer(pg, 0xffff, offset);
+    bind_vertex_buffer(pg, 0xffff, offset, 0, 0);
 }
 
 void pgraph_vk_set_surface_dirty(PGRAPHState *pg, bool color, bool zeta)
@@ -6417,8 +6576,15 @@ void pgraph_vk_flush_draw(NV2AState *d)
     r->num_vertex_ram_buffer_syncs = 0;
 
 #ifndef NDEBUG
-    RenderCommandSnapshot snap;
-    pgraph_vk_snapshot_state(pg, &snap);
+    /*
+     * Only these values are checked below. Avoid copying the register file,
+     * shader program and lighting arrays into an otherwise unused snapshot
+     * on every draw; assertions also remain enabled in optimized builds.
+     */
+    const uint32_t saved_primitive_mode = pg->primitive_mode;
+    const bool saved_clearing = pg->clearing;
+    const uint32_t saved_control_0 = pgraph_reg_r(pg, NV_PGRAPH_CONTROL_0);
+    const uint32_t saved_setupraster = pgraph_reg_r(pg, NV_PGRAPH_SETUPRASTER);
 #endif
 
     PrimAssemblyState assembly = {
@@ -6497,7 +6663,7 @@ void pgraph_vk_flush_draw(NV2AState *d)
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Draw Arrays");
         begin_draw(pg);
-        bind_vertex_buffer(pg, remap.attributes, 0);
+        bind_vertex_buffer(pg, remap.attributes, 0, min_element, max_element);
         NV2A_PHASE_TIMER_END(draw_setup);
 
         NV2A_PHASE_TIMER_BEGIN(draw_vk_cmd);
@@ -6609,7 +6775,8 @@ draw_arrays_done:
         pgraph_vk_begin_debug_marker(r, r->command_buffer, RGBA_BLUE,
                                      "Inline Elements");
         begin_draw(pg);
-        bind_vertex_buffer(pg, remap.attributes, 0);
+        bind_vertex_buffer(pg, remap.attributes, 0, min_element,
+                           max_element + 1);
         NV2A_PHASE_TIMER_END(draw_setup);
 
         NV2A_PHASE_TIMER_BEGIN(draw_vk_cmd);
@@ -6783,11 +6950,11 @@ inline_array_done:
     }
 
 #ifndef NDEBUG
-    assert(snap.primitive_mode == pg->primitive_mode);
-    assert(snap.clearing == pg->clearing);
-    assert(snapshot_reg_r(&snap, NV_PGRAPH_CONTROL_0) ==
+    assert(saved_primitive_mode == pg->primitive_mode);
+    assert(saved_clearing == pg->clearing);
+    assert(saved_control_0 ==
            pgraph_vk_reg_r(pg, NV_PGRAPH_CONTROL_0));
-    assert(snapshot_reg_r(&snap, NV_PGRAPH_SETUPRASTER) ==
+    assert(saved_setupraster ==
            pgraph_vk_reg_r(pg, NV_PGRAPH_SETUPRASTER));
 #endif
 

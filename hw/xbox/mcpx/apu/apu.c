@@ -475,8 +475,9 @@ static void monitor_init(MCPXAPUState *d)
 
     SDL_AudioSpec obtained_audio_spec = sdl_audio_spec;
     int obtained_frames = audio_samples;
-    if (!SDL_GetAudioDeviceFormat(sdl_audio_dev, &obtained_audio_spec,
-                                  &obtained_frames)) {
+    bool obtained_spec_valid = SDL_GetAudioDeviceFormat(
+        sdl_audio_dev, &obtained_audio_spec, &obtained_frames);
+    if (!obtained_spec_valid) {
         obtained_audio_spec = sdl_audio_spec;
         obtained_frames = audio_samples;
     }
@@ -514,6 +515,21 @@ static void monitor_init(MCPXAPUState *d)
     d->monitor.queued_bytes_high = MIN(3 * drain_bytes, max_high);
     d->monitor.queued_bytes_low = MIN(drain_bytes, d->monitor.queued_bytes_high);
 #endif
+
+    const char *driver = SDL_GetCurrentAudioDriver();
+    fprintf(stderr, "xemu-audio: driver=%s stream=%dHz/%dch/0x%04x "
+                    "requested_frames=%d obtained=%s "
+                    "device=%dHz/%dch/0x%04x device_frames=%d "
+                    "stream_period_frames=%d fifo_bytes=%d low=%d high=%d "
+                    "vp_workers=%d\n",
+            driver ? driver : "unknown", sdl_audio_spec.freq,
+            sdl_audio_spec.channels, (unsigned)sdl_audio_spec.format,
+            audio_samples, obtained_spec_valid ? "yes" : "fallback",
+            obtained_audio_spec.freq, obtained_audio_spec.channels,
+            (unsigned)obtained_audio_spec.format, obtained_frames,
+            period_frames, fifo_capacity_bytes, d->monitor.queued_bytes_low,
+            d->monitor.queued_bytes_high,
+            d->vp.voice_work_dispatch.num_workers);
 
     /* SDL3 opens device streams paused. */
     SDL_ResumeAudioDevice(sdl_audio_dev);

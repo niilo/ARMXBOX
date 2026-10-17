@@ -359,6 +359,9 @@ class SettingsActivity : AppCompatActivity() {
     val switchDrawMerge    = findViewById<MaterialSwitch>(R.id.switch_draw_merge)
     val switchAsyncCompile = findViewById<MaterialSwitch>(R.id.switch_async_compile)
     val switchShowFps      = findViewById<MaterialSwitch>(R.id.switch_show_fps)
+    val switchCpuProfile   = findViewById<MaterialSwitch>(R.id.switch_cpu_profile)
+    findViewById<View>(R.id.layout_cpu_profile).visibility =
+      if (BuildConfig.CPU_PROFILE_AVAILABLE) View.VISIBLE else View.GONE
     switchDebugLogs      = findViewById(R.id.switch_debug_logs)
     val toggleAudioDriver = findViewById<MaterialButtonToggleGroup>(R.id.toggle_audio_driver)
     val btnSave           = findViewById<MaterialButton>(R.id.btn_settings_save)
@@ -500,6 +503,9 @@ class SettingsActivity : AppCompatActivity() {
     switchDrawMerge.isChecked    = prefs.getBoolean("draw_merge_v2", false)
     switchAsyncCompile.isChecked = prefs.getBoolean("async_compile", false)
     switchShowFps.isChecked      = prefs.getBoolean("show_fps", false)
+    switchCpuProfile.isChecked = prefs.getBoolean(
+      "setting_cpu_profile_v2", BuildConfig.CPU_PROFILE_AVAILABLE
+    )
     switchDebugLogs.isChecked =
       prefs.getBoolean(DebugLog.PREF_ENABLED, false)
     switchNetworkEnable.isChecked =
@@ -602,6 +608,11 @@ class SettingsActivity : AppCompatActivity() {
         .putBoolean("draw_merge_v2", switchDrawMerge.isChecked)
         .putBoolean("async_compile", switchAsyncCompile.isChecked)
         .putBoolean("show_fps", switchShowFps.isChecked)
+        .apply {
+          if (BuildConfig.CPU_PROFILE_AVAILABLE) {
+            putBoolean("setting_cpu_profile_v2", switchCpuProfile.isChecked)
+          }
+        }
         .putBoolean(DebugLog.PREF_ENABLED, enableDebugLogs)
         .putBoolean("setting_network_enable", switchNetworkEnable.isChecked)
         .putBoolean("setting_chihiro", switchChihiro.isChecked)
@@ -2808,6 +2819,9 @@ class SettingsActivity : AppCompatActivity() {
 
   private fun isPersistentCacheEntry(name: String): Boolean {
     return name == "shaders" ||
+      name == "spv_cache" ||
+      name == "vk_pipeline_cache.bin" ||
+      name == "shader_module_keys.bin" ||
       name == "tb_cache.bin" ||
       name == "shader_cache_list" ||
       name.startsWith("scache-") ||
