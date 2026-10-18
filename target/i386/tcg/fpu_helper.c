@@ -742,24 +742,36 @@ static void merge_exception_flags(CPUX86State *env, int old_flags)
  * Whether x87 arithmetic may run on the host FPU where it is bit-exact (see
  * x87-native.h). On by default; XEMU_TCG_NATIVE_X87=0, or on Android
  * `setprop debug.xemu.tcg.native_x87 0`, keeps every operation in softfloat.
+ * Keep Android's property buffer out of every cached arithmetic call.
  */
+static bool x87_native_init(void) __attribute__((noinline, cold));
+
+static bool x87_native_init(void)
+{
+    bool enabled = true;
+
+#ifdef __ANDROID__
+    char value[PROP_VALUE_MAX] = {};
+    if (__system_property_get("debug.xemu.tcg.native_x87", value) > 0 &&
+        value[0] == '0') {
+        enabled = false;
+    }
+#else
+    const char *env = getenv("XEMU_TCG_NATIVE_X87");
+    if (env && env[0] == '0') {
+        enabled = false;
+    }
+#endif
+    return enabled;
+}
+
 static bool x87_native_enabled(void)
 {
     static int enabled = -1;
-    if (enabled < 0) {
+
+    if (unlikely(enabled < 0)) {
         enabled = 1;
-#ifdef __ANDROID__
-        char value[PROP_VALUE_MAX] = {};
-        if (__system_property_get("debug.xemu.tcg.native_x87", value) > 0 &&
-            value[0] == '0') {
-            enabled = 0;
-        }
-#else
-        const char *env = getenv("XEMU_TCG_NATIVE_X87");
-        if (env && env[0] == '0') {
-            enabled = 0;
-        }
-#endif
+        enabled = x87_native_init();
     }
     return enabled;
 }

@@ -53,9 +53,17 @@ val x87Transfer = providers.gradleProperty("xemu.x87Transfer")
 val x87Pc24 = providers.gradleProperty("xemu.x87Pc24")
   .map { it.toBooleanStrict() }.getOrElse(true)
 val pocketSCandidate = when {
-  !x87Pc24 -> if (x87Transfer) "rc14-transfer" else "rc14-control"
-  x87Transfer -> "rc14-combined"
-  else -> "rc14"
+  !x87Pc24 -> if (x87Transfer) "rc15-transfer" else "rc15-pc24-off"
+  x87Transfer -> "rc15-combined"
+  else -> "rc15"
+}
+val testBuildName = providers.gradleProperty("xemu.testBuildName").orElse("").get()
+require(testBuildName.isEmpty() || testBuildName.matches(Regex("[a-z0-9][a-z0-9-]{0,47}"))) {
+  "xemu.testBuildName must be a short lowercase filename-safe label"
+}
+val sourceRevision = providers.gradleProperty("xemu.sourceRevision").orElse("unknown").get()
+require(sourceRevision == "unknown" || sourceRevision.matches(Regex("[0-9a-f]{40}"))) {
+  "xemu.sourceRevision must be a full Git commit hash"
 }
 
 android {
@@ -77,9 +85,12 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 40
-    versionName = "1.2.11"
+    versionCode = 41
+    versionName = "1.2.12"
     buildConfigField("boolean", "CPU_PROFILE_AVAILABLE", cpuProfileHooks.toString())
+    buildConfigField("String", "TEST_BUILD_NAME", "\"$testBuildName\"")
+    buildConfigField("String", "SOURCE_REVISION", "\"$sourceRevision\"")
+    manifestPlaceholders["appLabel"] = "@string/app_name"
 
     ndk {
       abiFilters += listOf("arm64-v8a")
@@ -127,6 +138,10 @@ android {
       }
     }
     release {
+      if (testBuildName.isNotEmpty()) {
+        versionNameSuffix = "-pocket-s-$testBuildName"
+        manifestPlaceholders["appLabel"] = "X1 BOX $testBuildName"
+      }
       externalNativeBuild {
         cmake {
           arguments += listOf("-DXEMU_ENABLE_LTO=ON")
@@ -146,6 +161,7 @@ android {
       initWith(getByName("release"))
       // Keep the locally signed test build alongside the production app.
       applicationIdSuffix = ".dev"
+      manifestPlaceholders["appLabel"] = "@string/app_name"
       versionNameSuffix = "-pocket-s-$pocketSCandidate" + if (cpuProfileHooks) "-cpu-profile" else ""
       isDebuggable = false
       isProfileable = true

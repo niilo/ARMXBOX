@@ -132,6 +132,11 @@ native dependencies/alignment and source identity are checked separately.
 
 ## Prioritized next options
 
+The first focused implementation after release is
+[RC15's cold policy initializer](pocket-s-rc15.md), addressing option 2 below.
+It has a fresh release-equivalent control and requires device comparison;
+the released baseline and the device findings above remain the references.
+
 1. **Keep a reproducible baseline and improve evidence.** Pin release/tag, APK
    hash, actual CPU gates, driver, settings, course and starting temperature.
    Preserve these in exported logs even when the rolling log buffer loses
