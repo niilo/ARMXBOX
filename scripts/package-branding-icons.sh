@@ -18,3 +18,18 @@ for variant in release dev; do
   convert "ui/icons/${prefix}_256x256.png" -define icon:auto-resize=256,128,64,48,32,16 "ui/icons/${prefix}-icon.ico"
 done
 convert assets/branding/armxbox-release.png -resize 512x512 android/app/src/main/ic_launcher-playstore.png
+
+# Refresh native payloads and the Android header-only equivalents.
+python3 - <<'PYTHON'
+from pathlib import Path
+for variant, prefix in [('release', 'armxbox'), ('dev', 'armxbox-dev')]:
+    name = 'armxbox_256x256' if variant == 'release' else 'armxbox_dev_256x256'
+    data = Path(f'ui/icons/{prefix}_256x256.png').read_bytes()
+    Path(f'data/{name}.png').write_bytes(data)
+    rows = [', '.join(f'0x{b:02x}' for b in data[i:i+16]) + ','
+            for i in range(0, len(data), 16)]
+    Path(f'android/app/src/main/cpp/data/{name}.png.h').write_text(
+        '#pragma once\n\nstatic const unsigned char ' + name + '_data[] = {\n  ' +
+        '\n  '.join(rows) + '\n};\n\nstatic const unsigned int ' + name +
+        '_size = sizeof(' + name + '_data);\n')
+PYTHON
