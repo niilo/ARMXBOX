@@ -82,7 +82,18 @@ object DebugLog {
 
   fun exportDefaultFileName(): String {
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-    return "x1box-debug-$stamp.log"
+    val build = BuildConfig.TEST_BUILD_NAME.takeIf { it.isNotBlank() } ?: "standard"
+    return "x1box-$build-debug-$stamp.log"
+  }
+
+  private fun buildIdentity(context: Context): String =
+    "package=${context.packageName} version=${BuildConfig.VERSION_NAME} " +
+      "version_code=${BuildConfig.VERSION_CODE} build_type=${BuildConfig.BUILD_TYPE} " +
+      "candidate=${BuildConfig.TEST_BUILD_NAME.ifBlank { "standard" }} " +
+      "source=${BuildConfig.SOURCE_REVISION} pid=${android.os.Process.myPid()}"
+
+  fun logBuildIdentity(context: Context) {
+    i("xemu-build") { buildIdentity(context) }
   }
 
   @Throws(Exception::class)
@@ -94,6 +105,9 @@ object DebugLog {
     }
 
     outputStream.bufferedWriter().use { writer ->
+      writer.appendLine("=== Exporting App Identity (included logs may predate this build) ===")
+      writer.appendLine(buildIdentity(context))
+      writer.appendLine()
       // Leads, because this is the only section that can contain a fatal
       // signal or tombstone. Read fresh here rather than reusing the
       // launch-time snapshot: the emulator runs in its own process, so a crash

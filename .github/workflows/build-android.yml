@@ -11,6 +11,10 @@ on:
         description: Android variant (Debug, Profile, or signed Release)
         default: Debug
         type: string
+      test_build_name:
+        description: Optional label for a testing APK and launcher
+        default: ''
+        type: string
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: false
@@ -27,6 +31,10 @@ on:
         default: Debug
         type: choice
         options: [Debug, Profile, Release]
+      test_build_name:
+        description: Optional test label (for example rc15-control)
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -50,6 +58,7 @@ jobs:
       RUSTUP_TOOLCHAIN: stable
       GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
       VARIANT: ${{ inputs.variant || 'Debug' }}
+      TEST_BUILD_NAME: ${{ inputs.test_build_name || '' }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
@@ -94,10 +103,15 @@ jobs:
         shell: bash
         run: |
           case "$VARIANT" in Debug|Profile|Release) ;; *) echo 'Unsupported Android variant' >&2; exit 1 ;; esac
+          if [ -n "$TEST_BUILD_NAME" ] && ! [[ "$TEST_BUILD_NAME" =~ ^[a-z0-9][a-z0-9-]{0,47}$ ]]; then
+            echo 'Invalid test build label' >&2; exit 1
+          fi
           export PATH="$ANDROID_HOME/cmake/3.22.1/bin:$PATH"
           tasks=("assemble${VARIANT}")
           if [ "$VARIANT" = Release ]; then tasks+=(bundleRelease); fi
-          ./android/gradlew -p android --no-daemon "${tasks[@]}"
+          revision=$(git rev-parse HEAD)
+          ./android/gradlew -p android --no-daemon "${tasks[@]}" \
+            "-Pxemu.testBuildName=$TEST_BUILD_NAME" "-Pxemu.sourceRevision=$revision"
       - name: Verify release signatures
         if: env.VARIANT == 'Release'
         env:
@@ -113,12 +127,13 @@ jobs:
           BUILD_HOST: ${{ matrix.host }}
         run: |
           variant=$(printf '%s' "$VARIANT" | tr '[:upper:]' '[:lower:]')
+          label=${TEST_BUILD_NAME:+-${TEST_BUILD_NAME}}
           mkdir -p dist-android
           cp "android/app/${OUTPUT_DIR}/outputs/apk/${variant}/app-${variant}.apk" \
-            "dist-android/x1box-android-${variant}-${BUILD_HOST}.apk"
+            "dist-android/x1box-android-${variant}${label}-${BUILD_HOST}.apk"
           if [ "$VARIANT" = Release ]; then
             cp "android/app/${OUTPUT_DIR}/outputs/bundle/release/app-release.aab" \
-              "dist-android/x1box-android-release-${BUILD_HOST}.aab"
+              "dist-android/x1box-android-release${label}-${BUILD_HOST}.aab"
           fi
       - name: Remove release signing files
         if: always() && env.VARIANT == 'Release'
