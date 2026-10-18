@@ -53,9 +53,9 @@ val x87Transfer = providers.gradleProperty("xemu.x87Transfer")
 val x87Pc24 = providers.gradleProperty("xemu.x87Pc24")
   .map { it.toBooleanStrict() }.getOrElse(true)
 val pocketSCandidate = when {
-  !x87Pc24 -> if (x87Transfer) "rc14-transfer" else "rc14-control"
-  x87Transfer -> "rc14-combined"
-  else -> "rc14"
+  !x87Pc24 -> if (x87Transfer) "rc15-transfer" else "rc15-pc24-off"
+  x87Transfer -> "rc15-combined"
+  else -> "rc15-control"
 }
 
 android {
@@ -77,8 +77,8 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 40
-    versionName = "1.2.11"
+    versionCode = 41
+    versionName = "1.2.12"
     buildConfigField("boolean", "CPU_PROFILE_AVAILABLE", cpuProfileHooks.toString())
 
     ndk {
