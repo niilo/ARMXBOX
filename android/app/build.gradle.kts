@@ -55,7 +55,7 @@ val x87Pc24 = providers.gradleProperty("xemu.x87Pc24")
 val pocketSCandidate = when {
   !x87Pc24 -> if (x87Transfer) "rc15-transfer" else "rc15-pc24-off"
   x87Transfer -> "rc15-combined"
-  else -> "rc15-control"
+  else -> "rc15"
 }
 
 android {
