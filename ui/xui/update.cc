@@ -44,4 +44,3 @@ void AutoUpdateWindow::Draw()
     }
     ImGui::End();
 }
-

@@ -64,9 +64,9 @@ void FirstBootWindow::Draw()
 
     ImGui::Dummy(ImVec2(0,50*g_viewport_mgr.m_scale));
 
-    msg = "Visit https://xemu.app for more information";
+    msg = "Visit ARMXBOX on GitHub for more information";
     ImGui::SetCursorPosX((ImGui::GetWindowWidth()-ImGui::CalcTextSize(msg).x)/2);
-    Hyperlink(msg, "https://xemu.app");
+    Hyperlink(msg, "https://github.com/niilo/ARMXBOX");
 
     ImGui::Dummy(ImVec2(400*g_viewport_mgr.m_scale,20*g_viewport_mgr.m_scale));
 

@@ -832,7 +832,7 @@ void MainMenuDisplayView::Draw()
     }
     Toggle("Fullscreen on startup",
            &g_config.display.window.fullscreen_on_startup,
-           "Start xemu in fullscreen when opened");
+           "Start ARMXBOX in fullscreen when opened");
     Toggle("Exclusive fullscreen",
            &g_config.display.window.fullscreen_exclusive,
            "May improve responsiveness, but slows window switching");
@@ -882,7 +882,7 @@ void MainMenuDisplayView::Draw()
         }
     }
     Toggle("Animations", &g_config.display.ui.use_animations,
-           "Enable xemu user interface animations");
+           "Enable ARMXBOX user interface animations");
     ChevronCombo("Display mode", &g_config.display.ui.fit,
                  "Center\0"
                  "Scale\0"
@@ -1095,7 +1095,7 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
     static ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
     WidgetTitleDescriptionItem(
         "Port Forwarding",
-        "Configure xemu to forward connections to guest on these ports");
+        "Configure ARMXBOX to forward connections to guest on these ports");
     float p = ImGui::GetFrameHeight() * 0.3;
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
     if (ImGui::BeginTable("port_forward_tbl", 4, flags))
