@@ -81,14 +81,7 @@ void Updater::check_for_update(UpdaterCallback on_complete)
     // The legacy upstream updater must not replace an ARMXBOX installation.
     m_status = UPDATER_ERROR;
     if (on_complete) on_complete();
-    return;
 
-    if (m_status == UPDATER_IDLE || m_status == UPDATER_ERROR) {
-        m_on_complete = on_complete;
-        qemu_thread_create(&m_thread, "update_worker",
-                           &Updater::checker_thread_worker_func,
-                           this, QEMU_THREAD_JOINABLE);
-    }
 }
 
 void *Updater::checker_thread_worker_func(void *updater)
