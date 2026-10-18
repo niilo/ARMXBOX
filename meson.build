@@ -869,8 +869,15 @@ if host_os == 'windows'
   crypt32 = cc.find_library('crypt32')
 
   win = import('windows')
+  # Resource compilation does not inherit the C compiler's build defines.
+  version_res_args = []
+  if '-DXEMU_DEBUG_BUILD=1' in get_option('c_args')
+    version_res_args += ['-DXEMU_DEBUG_BUILD=1']
+  endif
   version_res = win.compile_resources('version.rc',
-                                      depend_files: files('pc-bios/qemu-nsis.ico'),
+                                      args: version_res_args,
+                                      depend_files: files('ui/icons/armxbox-icon.ico',
+                                                          'ui/icons/armxbox-dev-icon.ico'),
                                       include_directories: include_directories('.'),
                                       depends: xemu_version)
   host_dsosuf = '.dll'
