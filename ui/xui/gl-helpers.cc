@@ -23,7 +23,15 @@
 #include "data/controller_mask_s.png.h"
 #include "data/light_gun_mask.png.h"
 #include "data/logo_sdf.png.h"
-#include "data/xemu_64x64.png.h"
+#ifdef XEMU_DEBUG_BUILD
+#include "data/armxbox_dev_256x256.png.h"
+#define armxbox_icon_data armxbox_dev_256x256_data
+#define armxbox_icon_size armxbox_dev_256x256_size
+#else
+#include "data/armxbox_256x256.png.h"
+#define armxbox_icon_data armxbox_256x256_data
+#define armxbox_icon_size armxbox_256x256_size
+#endif
 #include "data/xmu_mask.png.h"
 #include "notifications.hh"
 #include "stb_image.h"
@@ -465,7 +473,7 @@ void InitCustomRendering(void)
     g_logo_shader = NewDecalShader(ShaderType::Logo);
     logo_fbo = new Fbo(512, 512);
 
-    g_icon_tex = LoadTextureFromMemory(xemu_64x64_data, xemu_64x64_size, false);
+    g_icon_tex = LoadTextureFromMemory(armxbox_icon_data, armxbox_icon_size, false);
 
     g_framebuffer_shader = NewDecalShader(ShaderType::BlitGamma);
 }

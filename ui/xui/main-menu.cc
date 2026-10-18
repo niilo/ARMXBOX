@@ -55,8 +55,9 @@ void MainMenuGeneralView::Draw()
 {
 #if defined(_WIN32)
     SectionTitle("Updates");
-    Toggle("Check for updates", &g_config.general.updates.check,
-           "Check for updates whenever xemu is opened");
+    if (ImGui::Button("Open ARMXBOX Releases")) {
+        SDL_OpenURL("https://github.com/niilo/ARMXBOX/releases/latest");
+    }
 #endif
 
 #if defined(__x86_64__)
@@ -1659,7 +1660,13 @@ void MainMenuAboutView::Draw()
     static const char *build_info_text = NULL;
     if (build_info_text == NULL) {
         build_info_text =
-            g_strdup_printf("Version:      %s\n"
+            g_strdup_printf("ARMXBOX\n"
+#ifdef XEMU_DEBUG_BUILD
+                            "Variant:      Dev\n"
+#else
+                            "Variant:      Release\n"
+#endif
+                            "Version:      %s\n"
                             "Commit:       %s\n"
                             "Date:         %s",
                             xemu_version, xemu_commit, xemu_date);
@@ -1714,8 +1721,8 @@ void MainMenuAboutView::Draw()
 
     ImGui::Text("Visit");
     ImGui::SameLine();
-    if (ImGui::SmallButton("https://xemu.app")) {
-        SDL_OpenURL("https://xemu.app");
+    if (ImGui::SmallButton("https://github.com/niilo/ARMXBOX")) {
+        SDL_OpenURL("https://github.com/niilo/ARMXBOX");
     }
     ImGui::SameLine();
     ImGui::Text("for more information");

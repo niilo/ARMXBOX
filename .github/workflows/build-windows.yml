@@ -42,7 +42,7 @@ jobs:
         apt-get update
         apt-get install -y ca-certificates curl zstd
     - name: Extract source package
-      run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
+      run: tar -xf armxbox-${{ inputs.pkg_version }}.tar.zst --strip-components=2
     - name: Install SDL3 and current Vulkan headers
       run: |
         # Older public images use /opt/mxe; this fork's images use /usr/local/mxe.
@@ -90,13 +90,13 @@ jobs:
       run: ./build.sh -p win64-cross ${XEMU_BUILD_OPTIONS}
     - name: Collect native ARM64 symbols
       if: ${{ matrix.arch == 'arm64' }}
-      run: cp build/xemu.pdb dist/xemu.pdb
+      run: cp build/xemu.pdb dist/armxbox.pdb
     - name: Report ccache stats
       run: ccache -s
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
+        name: armxbox-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
 
   # GCC/x86 uses cv2pdb; LLVM/ARM64 already supplies a native PDB.
@@ -112,7 +112,7 @@ jobs:
     - name: Download artifacts
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
-        name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}
+        name: armxbox-windows-${{ matrix.arch }}-${{ matrix.configuration }}
         path: dist
     - name: Generate PDB
       if: ${{ matrix.arch == 'x86_64' }}
@@ -120,15 +120,15 @@ jobs:
         Invoke-WebRequest -Uri "https://github.com/rainers/cv2pdb/releases/download/v0.52/cv2pdb-0.52.zip" -OutFile "cv2pdb.zip"
         7z x -ocv2pdb -y cv2pdb.zip
         cd dist
-        ../cv2pdb/cv2pdb64.exe xemu.exe
+        ../cv2pdb/cv2pdb64.exe armxbox.exe
     - name: Determine package version
       id: package_id
       shell: bash
       env:
         VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
       run: |
-        echo "pkg_filename=xemu-${VERSION}-windows-${{ matrix.arch }}.zip" >> $GITHUB_OUTPUT
-        echo "pdb_filename=xemu-${VERSION}-windows-${{ matrix.arch }}-pdb.zip" >> $GITHUB_OUTPUT
+        echo "pkg_filename=armxbox-${VERSION}-windows-${{ matrix.arch }}.zip" >> $GITHUB_OUTPUT
+        echo "pdb_filename=armxbox-${VERSION}-windows-${{ matrix.arch }}-pdb.zip" >> $GITHUB_OUTPUT
     - name: Package
       run: |
         mkdir dist-pdb
@@ -138,6 +138,6 @@ jobs:
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: xemu-windows-${{ matrix.arch }}-${{ matrix.configuration }}-pdb
+        name: armxbox-windows-${{ matrix.arch }}-${{ matrix.configuration }}-pdb
         path: dist-pdb
         compression-level: 0

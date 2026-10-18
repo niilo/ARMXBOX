@@ -32,11 +32,11 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         RELEASE_TAG: ${{ inputs.release }}
-      run: gh release download "$RELEASE_TAG" --repo="$GITHUB_REPOSITORY" -p 'xemu-*.tar.zst'
+      run: gh release download "$RELEASE_TAG" --repo="$GITHUB_REPOSITORY" -p 'armxbox-*.tar.zst'
     - name: Extract source package
       run: |
         mkdir src
-        tar -C src -xf xemu-*.tar.zst --strip-components=2
+        tar -C src -xf armxbox-*.tar.zst --strip-components=2
 
         # Ensure subprojects are uploaded
         find src/subprojects -name "*.gitignore" -exec rm {} \;

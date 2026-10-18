@@ -27,11 +27,11 @@
 #include "xemu-version.h"
 
 #if defined(_WIN32)
-const char *version_url = "https://raw.githubusercontent.com/xemu-project/xemu/ppa-snapshot/XEMU_VERSION";
+const char *version_url = "https://github.com/niilo/ARMXBOX/releases/latest/download/ARMXBOX_VERSION";
 #if defined(__x86_64__)
-const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-x86_64-release.zip";
+const char *download_url = "https://github.com/niilo/ARMXBOX/releases/latest/download/armxbox-win-x86_64-release.zip";
 #elif defined(__aarch64__)
-const char *download_url = "https://github.com/xemu-project/xemu/releases/latest/download/xemu-win-aarch64-release.zip";
+const char *download_url = "https://github.com/niilo/ARMXBOX/releases/latest/download/armxbox-win-aarch64-release.zip";
 #else
 #error Unknown update path
 #endif
@@ -51,76 +51,19 @@ AutoUpdateWindow::AutoUpdateWindow()
 
 void AutoUpdateWindow::CheckForUpdates()
 {
-    updater.check_for_update([this](){
-        is_open |= updater.is_update_available();
-    });
+    // ARMXBOX updates are distributed through GitHub Releases.
+    // Never run the upstream xemu self-updater for this fork.
 }
 
 void AutoUpdateWindow::Draw()
 {
     if (!is_open) return;
-    ImGui::SetNextWindowContentSize(ImVec2(550.0f*g_viewport_mgr.m_scale, 0.0f));
-    if (!ImGui::Begin("Update", &is_open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::End();
-        return;
-    }
-
-    if (ImGui::IsWindowAppearing() && !updater.is_update_available()) {
-        updater.check_for_update();
-    }
-
-    const char *status_msg[] = {
-        "",
-        "An error has occured. Try again.",
-        "Checking for update...",
-        "Downloading update...",
-        "Update successful! Restart to launch updated version of xemu."
-    };
-    const char *available_msg[] = {
-        "Update availability unknown.",
-        "This version of xemu is up to date.",
-        "An updated version of xemu is available!",
-    };
-
-    if (updater.get_status() == UPDATER_IDLE) {
-        ImGui::Text("%s", available_msg[updater.get_update_availability()]);
-    } else {
-        ImGui::Text("%s", status_msg[updater.get_status()]);
-    }
-
-    if (updater.is_updating()) {
-        ImGui::ProgressBar(updater.get_update_progress_percentage()/100.0f,
-                           ImVec2(-1.0f, 0.0f));
-    }
-
-    ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
-    ImGui::Separator();
-    ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
-
-    float w = (130)*g_viewport_mgr.m_scale;
-    float bw = w + (10)*g_viewport_mgr.m_scale;
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth()-bw);
-
-    if (updater.is_checking_for_update() || updater.is_updating()) {
-        if (ImGui::Button("Cancel", ImVec2(w, 0))) {
-            updater.cancel();
-        }
-    } else {
-        if (updater.is_pending_restart()) {
-            if (ImGui::Button("Restart", ImVec2(w, 0))) {
-                updater.restart_to_updated();
-            }
-        } else if (updater.is_update_available()) {
-            if (ImGui::Button("Update", ImVec2(w, 0))) {
-                updater.update();
-            }
-        } else {
-            if (ImGui::Button("Check for Update", ImVec2(w, 0))) {
-                updater.check_for_update();
-            }
+    if (ImGui::Begin("ARMXBOX Updates", &is_open, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Download ARMXBOX updates from GitHub Releases.");
+        if (ImGui::Button("Open Releases")) {
+            SDL_OpenURL("https://github.com/niilo/ARMXBOX/releases/latest");
         }
     }
-
     ImGui::End();
 }
 
@@ -135,6 +78,11 @@ Updater::Updater()
 
 void Updater::check_for_update(UpdaterCallback on_complete)
 {
+    // The legacy upstream updater must not replace an ARMXBOX installation.
+    m_status = UPDATER_ERROR;
+    if (on_complete) on_complete();
+    return;
+
     if (m_status == UPDATER_IDLE || m_status == UPDATER_ERROR) {
         m_on_complete = on_complete;
         qemu_thread_create(&m_thread, "update_worker",
@@ -251,7 +199,7 @@ void Updater::update_internal()
         char *dst_path = g_strdup_printf("%s%s", SDL_GetBasePath(), fstat.m_filename);
         DPRINTF("extracting %s to %s\n", fstat.m_filename, dst_path);
 
-        if (!strcmp(fstat.m_filename, "xemu.exe")) {
+        if (!strcmp(fstat.m_filename, "armxbox.exe")) {
             // We cannot overwrite current executable, but we can move it
             char *renamed_path = g_strdup_printf("%s%s", SDL_GetBasePath(), "xemu-previous.exe");
             MoveFileExA(dst_path, renamed_path, MOVEFILE_REPLACE_EXISTING);
@@ -281,7 +229,7 @@ extern char **gArgv;
 
 void Updater::restart_to_updated()
 {
-    char *target_exec = g_strdup_printf("%s%s", SDL_GetBasePath(), "xemu.exe");
+    char *target_exec = g_strdup_printf("%s%s", SDL_GetBasePath(), "armxbox.exe");
     DPRINTF("Restarting to updated executable %s\n", target_exec);
     _execv(target_exec, gArgv);
     DPRINTF("Launching updated executable failed\n");

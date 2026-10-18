@@ -97,8 +97,8 @@ jobs:
         PKG_VERSION: ${{ needs.build.outputs.pkg_version }}
       run: |
         pushd dist
-        cp "xemu-${PKG_VERSION}-windows-x86_64.zip" xemu-win-x86_64-release.zip
-        cp "xemu-${PKG_VERSION}-windows-arm64.zip" xemu-win-aarch64-release.zip
+        cp "armxbox-${PKG_VERSION}-windows-x86_64.zip" armxbox-win-x86_64-release.zip
+        cp "armxbox-${PKG_VERSION}-windows-arm64.zip" armxbox-win-aarch64-release.zip
     - name: Create release
       uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
       with:
@@ -109,9 +109,9 @@ jobs:
         draft: ${{ !inputs.pre-release }}
         prerelease: ${{ inputs.pre-release }}
         files: |
-          dist/xemu*.tar.zst
-          dist/xemu*-win*.zip
-          dist/xemu*-macos-universal*.zip
-          dist/xemu*.AppImage
-          dist/x1box-android-*.apk
-          dist/x1box-android-*.aab
+          dist/armxbox*.tar.zst
+          dist/armxbox*-win*.zip
+          dist/armxbox*-macos-universal*.zip
+          dist/ARMXBOX*.AppImage
+          dist/armxbox-*-android-*.apk
+          dist/armxbox-*-android-*.aab

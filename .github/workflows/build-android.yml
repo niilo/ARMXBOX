@@ -127,13 +127,14 @@ jobs:
           BUILD_HOST: ${{ matrix.host }}
         run: |
           variant=$(printf '%s' "$VARIANT" | tr '[:upper:]' '[:lower:]')
+          version=$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)"/\1/p' android/app/build.gradle.kts)
           label=${TEST_BUILD_NAME:+-${TEST_BUILD_NAME}}
           mkdir -p dist-android
           cp "android/app/${OUTPUT_DIR}/outputs/apk/${variant}/app-${variant}.apk" \
-            "dist-android/x1box-android-${variant}${label}-${BUILD_HOST}.apk"
+            "dist-android/armxbox-${version}-android-${variant}${label}-${BUILD_HOST}.apk"
           if [ "$VARIANT" = Release ]; then
             cp "android/app/${OUTPUT_DIR}/outputs/bundle/release/app-release.aab" \
-              "dist-android/x1box-android-release${label}-${BUILD_HOST}.aab"
+              "dist-android/armxbox-${version}-android-release${label}-${BUILD_HOST}.aab"
           fi
       - name: Remove release signing files
         if: always() && env.VARIANT == 'Release'
@@ -141,7 +142,7 @@ jobs:
       - name: Upload Android packages
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: x1box-android-${{ matrix.host }}-${{ inputs.variant || 'Debug' }}
+          name: armxbox-android-${{ matrix.host }}-${{ inputs.variant || 'Debug' }}
           path: |
             dist-android/*.apk
             dist-android/*.aab

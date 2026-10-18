@@ -14,12 +14,12 @@ FILESUBTYPE VFT2_UNKNOWN
   {
     BLOCK "040904E4"
     {
-      VALUE "CompanyName", "https://xemu.app"
-      VALUE "FileDescription", "xemu: Original Xbox Emulator"
+      VALUE "CompanyName", "https://github.com/niilo/ARMXBOX"
+      VALUE "FileDescription", "ARMXBOX: Original Xbox Emulator"
       VALUE "FileVersion", XEMU_VERSION
       VALUE "LegalCopyright", "Copyright various authors. Released under the GNU General Public License."
       VALUE "LegalTrademarks", "QEMU is a trademark of Fabrice Bellard."
-      VALUE "ProductName", "xemu"
+      VALUE "ProductName", "ARMXBOX"
     }
   }
   BLOCK "VarFileInfo"
@@ -28,4 +28,8 @@ FILESUBTYPE VFT2_UNKNOWN
   }
 }
 
-IDI_ICON1 ICON "ui/icons/xemu-icon.ico"
+#ifdef XEMU_DEBUG_BUILD
+IDI_ICON1 ICON "ui/icons/armxbox-dev-icon.ico"
+#else
+IDI_ICON1 ICON "ui/icons/armxbox-icon.ico"
+#endif

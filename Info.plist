@@ -5,21 +5,21 @@
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleExecutable</key>
-  <string>xemu</string>
+  <string>armxbox</string>
   <key>CFBundleIconFile</key>
-  <string>xemu.icns</string>
+  <string>armxbox.icns</string>
   <key>CFBundleIdentifier</key>
   <string>xemu.app.0</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>xemu</string>
+  <string>ARMXBOX</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
   <string>1</string>
   <key>CFBundleSignature</key>
-  <string>xemu</string>
+  <string>armxbox</string>
   <key>CFBundleVersion</key>
   <string>1</string>
   <key>LSApplicationCategoryType</key>

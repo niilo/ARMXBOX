@@ -1869,6 +1869,8 @@ class GameLibraryActivity : AppCompatActivity() {
     )
 
     val message = SpannableStringBuilder().apply {
+      append(BuildIdentity.display(this@GameLibraryActivity))
+      append("\n\n")
       append(getString(R.string.library_about_message))
       append("\n\n")
       links.forEachIndexed { index, pair ->

@@ -1,6 +1,6 @@
 <resources>
-  <string name="app_name">X1 BOX</string>
-  <string name="setup_title">Welcome to X1 BOX</string>
+  <string name="app_name">ARMXBOX</string>
+  <string name="setup_title">Welcome to ARMXBOX</string>
   <string name="setup_subtitle">Locate your original Xbox files.</string>
   <string name="setup_not_set">Not set</string>
   <string name="setup_selected_file_fallback_name">selected file</string>
@@ -34,7 +34,7 @@
   <string name="setup_hdd_value">Hard Disk: %1$s</string>
 
   <string name="setup_disc_title">Games Folder</string>
-  <string name="setup_disc_body">Pick your games folder using SAF. X1 BOX will scan it for playable images.</string>
+  <string name="setup_disc_body">Pick your games folder using SAF. ARMXBOX will scan it for playable images.</string>
   <string name="setup_pick_disc">Choose Games Folder</string>
   <string name="setup_disc_value">Games Folder: %1$s</string>
 
@@ -83,20 +83,20 @@
   <string name="library_regular_iso_badge">! Convert to XISO</string>
   <string name="library_game_path">Path: %1$s</string>
   <string name="library_open_game">Open</string>
-  <string name="library_about_button_desc">About X1 BOX</string>
-  <string name="library_about_title">About X1 BOX</string>
-  <string name="library_about_message">X1 BOX is a community project based on xemu. Select a link below:</string>
+  <string name="library_about_button_desc">About ARMXBOX</string>
+  <string name="library_about_title">About ARMXBOX</string>
+  <string name="library_about_message">ARMXBOX is a community project based on xemu. Select a link below:</string>
   <string name="library_about_open_failed">Unable to open link.</string>
-  <string name="library_about_link_source">Source Code (X1 BOX)</string>
+  <string name="library_about_link_source">Source Code (ARMXBOX)</string>
   <string name="library_about_link_privacy">Privacy Policy</string>
   <string name="library_about_link_fork">Forked From (xemu)</string>
   <string name="library_about_link_license">License (LICENSE)</string>
   <string name="library_about_link_disclaimer">License Disclaimer (COPYING)</string>
-  <string name="library_about_url_source" translatable="false">https://github.com/izzy2lost/xemu</string>
-  <string name="library_about_url_privacy" translatable="false">https://www.izzy2lost.com/x1box-privacy</string>
+  <string name="library_about_url_source" translatable="false">https://github.com/niilo/ARMXBOX</string>
+  <string name="library_about_url_privacy" translatable="false">https://github.com/niilo/ARMXBOX/blob/master/PRIVACY.md</string>
   <string name="library_about_url_fork" translatable="false">https://github.com/xemu-project/xemu</string>
-  <string name="library_about_url_license" translatable="false">https://github.com/izzy2lost/xemu/blob/master/LICENSE</string>
-  <string name="library_about_url_disclaimer" translatable="false">https://github.com/izzy2lost/xemu/blob/master/COPYING</string>
+  <string name="library_about_url_license" translatable="false">https://github.com/niilo/ARMXBOX/blob/master/LICENSE</string>
+  <string name="library_about_url_disclaimer" translatable="false">https://github.com/niilo/ARMXBOX/blob/master/COPYING</string>
 
   <string name="library_settings">Settings</string>
 
@@ -400,4 +400,8 @@
   <string name="per_game_settings_saved">Per-game settings saved</string>
   <string name="per_game_settings_cleared">Per-game settings cleared</string>
   <string name="per_game_settings_missing_game">This game could not be resolved.</string>
+  <string name="build_variant_release">Release</string>
+  <string name="build_variant_debug">Dev · Debug</string>
+  <string name="build_variant_profile">Dev · Profile</string>
+  <string name="build_version_format">%1$s %2$s · %3$s (build %4$d)</string>
 </resources>
