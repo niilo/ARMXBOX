@@ -54,7 +54,15 @@
 #include "xemu-version.h"
 #include "xemu-os-utils.h"
 
-#include "data/xemu_64x64.png.h"
+#ifdef XEMU_DEBUG_BUILD
+#include "data/armxbox_dev_256x256.png.h"
+#define armxbox_icon_data armxbox_dev_256x256_data
+#define armxbox_icon_size armxbox_dev_256x256_size
+#else
+#include "data/armxbox_256x256.png.h"
+#define armxbox_icon_data armxbox_256x256_data
+#define armxbox_icon_size armxbox_256x256_size
+#endif
 
 #include "hw/xbox/smbus.h" // For eject, drive tray
 #include "hw/xbox/nv2a/nv2a.h"
@@ -1078,7 +1086,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 #endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
-    char *title = g_strdup_printf("xemu | v%s"
+    char *title = g_strdup_printf("ARMXBOX | v%s"
 #ifdef XEMU_DEBUG_BUILD
                                   " Debug"
 #endif
@@ -1239,7 +1247,7 @@ static void sdl2_display_very_early_init(DisplayOptions *o)
 
     int width, height, channels = 0;
     stbi_set_flip_vertically_on_load(0);
-    unsigned char *icon_data = stbi_load_from_memory(xemu_64x64_data, xemu_64x64_size, &width, &height, &channels, 4);
+    unsigned char *icon_data = stbi_load_from_memory(armxbox_icon_data, armxbox_icon_size, &width, &height, &channels, 4);
     if (icon_data) {
         SDL_Surface *icon = SDL_CreateSurfaceFrom(
             width, height, SDL_PIXELFORMAT_ABGR8888, icon_data, width * 4);
@@ -2183,7 +2191,7 @@ static void setup_nvidia_profile(void)
 
     if (nvapi_init()) {
         nvapi_setup_profile((NvApiProfileOpts){
-            .profile_name = L"xemu",
+            .profile_name = L"ARMXBOX",
             .executable_name = exe_name,
             .threaded_optimization = false,
         });

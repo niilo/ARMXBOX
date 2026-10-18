@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-X1 BOX (`com.izzy2lost.x1box`) is an original Xbox emulator for Android, forked from [xemu](https://github.com/xemu-project/xemu), itself a fork of QEMU. The repo is a full QEMU source tree; Xbox-specific emulation lives in `hw/xbox/`, and the Android packaging/UI lives in `android/`. Android is the primary target (arm64-v8a, minSdk 29, Vulkan required), but the host build (`./build.sh`) still produces the desktop xemu binary.
+ARMXBOX (`com.izzy2lost.x1box`) is an original Xbox emulator for Android, forked from [xemu](https://github.com/xemu-project/xemu), itself a fork of QEMU. The repo is a full QEMU source tree; Xbox-specific emulation lives in `hw/xbox/`, and the Android packaging/UI lives in `android/`. Android is the primary target (arm64-v8a, minSdk 29, Vulkan required), but the host build (`./build.sh`) still produces the desktop ARMXBOX binary.
 
 ## Build Commands
 

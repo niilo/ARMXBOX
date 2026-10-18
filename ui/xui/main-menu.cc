@@ -55,8 +55,9 @@ void MainMenuGeneralView::Draw()
 {
 #if defined(_WIN32)
     SectionTitle("Updates");
-    Toggle("Check for updates", &g_config.general.updates.check,
-           "Check for updates whenever xemu is opened");
+    if (ImGui::Button("Open ARMXBOX Releases")) {
+        SDL_OpenURL("https://github.com/niilo/ARMXBOX/releases/latest");
+    }
 #endif
 
 #if defined(__x86_64__)
@@ -831,7 +832,7 @@ void MainMenuDisplayView::Draw()
     }
     Toggle("Fullscreen on startup",
            &g_config.display.window.fullscreen_on_startup,
-           "Start xemu in fullscreen when opened");
+           "Start ARMXBOX in fullscreen when opened");
     Toggle("Exclusive fullscreen",
            &g_config.display.window.fullscreen_exclusive,
            "May improve responsiveness, but slows window switching");
@@ -881,7 +882,7 @@ void MainMenuDisplayView::Draw()
         }
     }
     Toggle("Animations", &g_config.display.ui.use_animations,
-           "Enable xemu user interface animations");
+           "Enable ARMXBOX user interface animations");
     ChevronCombo("Display mode", &g_config.display.ui.fit,
                  "Center\0"
                  "Scale\0"
@@ -1094,7 +1095,7 @@ void MainMenuNetworkView::DrawNatOptions(bool appearing)
     static ImGuiTableFlags flags = ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg;
     WidgetTitleDescriptionItem(
         "Port Forwarding",
-        "Configure xemu to forward connections to guest on these ports");
+        "Configure ARMXBOX to forward connections to guest on these ports");
     float p = ImGui::GetFrameHeight() * 0.3;
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(p, p));
     if (ImGui::BeginTable("port_forward_tbl", 4, flags))
@@ -1659,7 +1660,13 @@ void MainMenuAboutView::Draw()
     static const char *build_info_text = NULL;
     if (build_info_text == NULL) {
         build_info_text =
-            g_strdup_printf("Version:      %s\n"
+            g_strdup_printf("ARMXBOX\n"
+#ifdef XEMU_DEBUG_BUILD
+                            "Variant:      Dev\n"
+#else
+                            "Variant:      Release\n"
+#endif
+                            "Version:      %s\n"
                             "Commit:       %s\n"
                             "Date:         %s",
                             xemu_version, xemu_commit, xemu_date);
@@ -1714,8 +1721,8 @@ void MainMenuAboutView::Draw()
 
     ImGui::Text("Visit");
     ImGui::SameLine();
-    if (ImGui::SmallButton("https://xemu.app")) {
-        SDL_OpenURL("https://xemu.app");
+    if (ImGui::SmallButton("https://github.com/niilo/ARMXBOX")) {
+        SDL_OpenURL("https://github.com/niilo/ARMXBOX");
     }
     ImGui::SameLine();
     ImGui::Text("for more information");

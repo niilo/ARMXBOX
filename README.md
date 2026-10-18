@@ -1,15 +1,21 @@
-# X1 BOX
+# ARMXBOX
 
-<a href="https://play.google.com/store/apps/details?id=com.izzy2lost.x1box&pcampaignid=web_share">
-  <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="80"/>
-</a>
+[Download ARMXBOX from GitHub Releases](https://github.com/niilo/ARMXBOX/releases/latest)
 
-X1 BOX is an original Xbox emulator for Android, based on xemu.
+ARMXBOX is an original Xbox emulator for Android, based on xemu.
 
 > [!IMPORTANT]
-> X1 BOX is resource-heavy. A device with **8 GB RAM or more is recommended**.  
-> Lower-end devices may run poorly or fail to run games correctly.  
+> ARMXBOX is resource-heavy. A device with **8 GB RAM or more is recommended**.
+> Lower-end devices may run poorly or fail to run games correctly.
 > **Vulkan support is required.**
+
+## Builds and versions
+
+- **ARMXBOX** is the signed release app (lime/teal icon).
+- **ARMXBOX Dev** is the separate Debug/Profile app (violet/amber icon with DEV badge).
+- Settings and About show the installed version, variant and build number.
+- APK filenames include the version, variant and build host. Desktop executables are `armxbox` / `armxbox.exe`, and the macOS bundle is `ARMXBOX.app`.
+- Android package IDs, signing keys, existing settings and storage paths remain compatible with earlier X1 BOX builds. Dev and release retain separate app data.
 
 ## Project Origin
 
@@ -18,7 +24,7 @@ X1 BOX is an original Xbox emulator for Android, based on xemu.
 
 ## What It Does
 
-X1 BOX packages xemu for Android with an Android-first flow and launcher UI.
+ARMXBOX packages xemu for Android with an Android-first flow and launcher UI.
 
 ## Key Features
 
@@ -32,7 +38,7 @@ X1 BOX packages xemu for Android with an Android-first flow and launcher UI.
 
 ## Device Requirements
 
-- Android 8.0+ (API 26 or newer)
+- Android 10+ (API 29 or newer)
 - 64-bit ARM device (`arm64-v8a`)
 - Vulkan-capable GPU/device
 - Recommended: 8 GB RAM or higher for better stability and performance
@@ -46,7 +52,7 @@ To use the emulator, you must provide your own legally obtained original Xbox fi
 - Xbox hard disk image
 - Game files/images from your own discs
 
-X1 BOX does not include copyrighted BIOS or game content.
+ARMXBOX does not include copyrighted BIOS or game content.
 
 ## License
 
@@ -63,5 +69,5 @@ See these files for details:
 
 ## Notes
 
-- X1 BOX is not affiliated with Microsoft.
+- ARMXBOX is not affiliated with Microsoft.
 - Compatibility and performance vary by device and game.

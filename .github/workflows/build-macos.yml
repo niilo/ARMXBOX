@@ -32,7 +32,7 @@ jobs:
       with:
         name: src
     - name: Extract source package
-      run: tar -xf xemu-${{ inputs.pkg_version }}.tar.zst --strip-components=2
+      run: tar -xf armxbox-${{ inputs.pkg_version }}.tar.zst --strip-components=2
     - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
       with:
         python-version: '3.12'
@@ -92,7 +92,7 @@ jobs:
       env:
         VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
       run: |
-        pkg_filename="xemu-${VERSION}-macos-${{ matrix.arch }}-unsigned.zip"
+        pkg_filename="armxbox-${VERSION}-macos-${{ matrix.arch }}-unsigned.zip"
         echo "pkg_filename=${pkg_filename}" >> $GITHUB_OUTPUT
 
         pushd dist
@@ -101,7 +101,7 @@ jobs:
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: xemu-macos-${{ matrix.arch }}-${{ matrix.configuration }}
+        name: armxbox-macos-${{ matrix.arch }}-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}
         compression-level: 0
 
@@ -116,25 +116,25 @@ jobs:
     - name: Download architecture-specific builds
       uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v4
       with:
-        pattern: "xemu-macos-*-${{ matrix.configuration }}"
+        pattern: "armxbox-macos-*-${{ matrix.configuration }}"
         merge-multiple: true
     - name: Build Universal bundle
       run: |
         mkdir dist
         pushd dist
         for arch in x86_64 arm64; do
-          unzip -o ../xemu-*-${arch}-unsigned.zip
-          mv xemu.app/Contents/MacOS/xemu ../xemu_${arch}
+          unzip -o ../armxbox-*-${arch}-unsigned.zip
+          mv ARMXBOX.app/Contents/MacOS/armxbox ../armxbox_${arch}
         done
-        lipo -create -output xemu.app/Contents/MacOS/xemu ../xemu_x86_64 ../xemu_arm64
-        codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - xemu.app/Contents/MacOS/xemu
+        lipo -create -output ARMXBOX.app/Contents/MacOS/armxbox ../armxbox_x86_64 ../armxbox_arm64
+        codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - ARMXBOX.app/Contents/MacOS/armxbox
         popd
     - name: Package
       id: package
       env:
         VERSION: ${{ inputs.pkg_version }}${{ matrix.configuration == 'debug' && '-dbg' || '' }}
       run: |
-        pkg_filename="xemu-${VERSION}-macos-universal-unsigned.zip"
+        pkg_filename="armxbox-${VERSION}-macos-universal-unsigned.zip"
         echo "pkg_filename=${pkg_filename}" >> $GITHUB_OUTPUT
         pushd dist
         zip -r ../${pkg_filename} *
@@ -142,6 +142,6 @@ jobs:
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:
-        name: xemu-macos-universal-${{ matrix.configuration }}
+        name: armxbox-macos-universal-${{ matrix.configuration }}
         path: ${{ steps.package.outputs.pkg_filename }}
         compression-level: 0

@@ -47,6 +47,14 @@
             android:text="@string/settings_title"
             android:textAppearance="@style/TextAppearance.Material3.HeadlineMedium" />
 
+          <TextView
+            android:id="@+id/settings_version"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp"
+            android:textIsSelectable="true"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+
           <!-- ── DISPLAY ── -->
           <TextView
             android:layout_width="wrap_content"

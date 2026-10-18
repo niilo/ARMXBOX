@@ -12,5 +12,5 @@ dependencyResolutionManagement {
     mavenCentral()
   }
 }
-rootProject.name = "xemu-android"
+rootProject.name = "ARMXBOX"
 include(":app")

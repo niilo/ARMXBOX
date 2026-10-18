@@ -85,8 +85,8 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 41
-    versionName = "1.2.12"
+    versionCode = 42
+    versionName = "1.2.13"
     buildConfigField("boolean", "CPU_PROFILE_AVAILABLE", cpuProfileHooks.toString())
     buildConfigField("String", "TEST_BUILD_NAME", "\"$testBuildName\"")
     buildConfigField("String", "SOURCE_REVISION", "\"$sourceRevision\"")
@@ -133,6 +133,7 @@ android {
       // Keep locally signed development builds installable alongside the
       // Play-signed release so device testing never requires clearing user data.
       applicationIdSuffix = ".dev"
+      versionNameSuffix = "-dev"
       ndk {
         debugSymbolLevel = "NONE"
       }
@@ -140,7 +141,7 @@ android {
     release {
       if (testBuildName.isNotEmpty()) {
         versionNameSuffix = "-pocket-s-$testBuildName"
-        manifestPlaceholders["appLabel"] = "X1 BOX $testBuildName"
+        manifestPlaceholders["appLabel"] = "ARMXBOX $testBuildName"
       }
       externalNativeBuild {
         cmake {
@@ -172,6 +173,9 @@ android {
       }
     }
   }
+
+  sourceSets.getByName("debug").res.directories += "src/dev/res"
+  sourceSets.getByName("profile").res.directories += "src/dev/res"
 
   if (!vulkanValidationJniLibs.isNullOrBlank()) {
     /* AGP 9 deprecated srcDir() in favour of the mutable `directories` set. */

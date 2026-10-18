@@ -75,8 +75,8 @@ if [[ "$INPUT_FILE_PATH" ]]; then
 elif [[ "$TAG" ]]; then
     echo "[*] Downloading unsigned release archive for tag $TAG..."
     VERSION=${TAG#v}
-    UNSIGNED_ZIP_PATH="$PWD/xemu-${VERSION}-macos-universal-unsigned.zip"
-    SIGNED_ZIP_PATH="$PWD/xemu-${VERSION}-macos-universal.zip"
+    UNSIGNED_ZIP_PATH="$PWD/armxbox-${VERSION}-macos-universal-unsigned.zip"
+    SIGNED_ZIP_PATH="$PWD/armxbox-${VERSION}-macos-universal.zip"
     gh release download "$TAG" -R "$REPO" -p "$(basename "$UNSIGNED_ZIP_PATH")"
 fi
 
@@ -88,16 +88,16 @@ pushd $TMPDIR
 echo "[*] Extracting release"
 unzip "$UNSIGNED_ZIP_PATH"
 
-echo "[*] Signing xemu.app"
+echo "[*] Signing ARMXBOX.app"
 rcodesign sign \
     --p12-file "$P12_FILE" \
     --p12-password-file "$P12_PASSWORD_FILE" \
     --entitlements-xml-file "$ENTITLEMENTS" \
     --for-notarization \
-    ./xemu.app
+    ./ARMXBOX.app
 
 echo "[*] Notarizing..."
-rcodesign notary-submit --api-key-path "$API_KEY_PATH" --staple ./xemu.app
+rcodesign notary-submit --api-key-path "$API_KEY_PATH" --staple ./ARMXBOX.app
 
 echo "[*] Creating new release archive..."
 zip -r "$SIGNED_ZIP_PATH" *

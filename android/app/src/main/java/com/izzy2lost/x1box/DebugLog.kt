@@ -83,7 +83,7 @@ object DebugLog {
   fun exportDefaultFileName(): String {
     val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
     val build = BuildConfig.TEST_BUILD_NAME.takeIf { it.isNotBlank() } ?: "standard"
-    return "x1box-$build-debug-$stamp.log"
+    return "armxbox-${BuildConfig.VERSION_NAME}-${BuildConfig.BUILD_TYPE}-$build-$stamp.log"
   }
 
   private fun buildIdentity(context: Context): String =
@@ -93,7 +93,10 @@ object DebugLog {
       "source=${BuildConfig.SOURCE_REVISION} pid=${android.os.Process.myPid()}"
 
   fun logBuildIdentity(context: Context) {
-    i("xemu-build") { buildIdentity(context) }
+    // Always identify the running APK, even when verbose debug logging is off.
+    val identity = buildIdentity(context)
+    Log.i("xemu-build", identity)
+    if (enabled) appendUiLine("I", "xemu-build", identity)
   }
 
   @Throws(Exception::class)

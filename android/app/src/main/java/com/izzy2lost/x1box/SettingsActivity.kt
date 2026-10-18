@@ -334,6 +334,7 @@ class SettingsActivity : AppCompatActivity() {
     applySettingsMigrationV2()
     applySettingsMigrationV3()
     setContentView(R.layout.activity_settings)
+    findViewById<TextView>(R.id.settings_version).text = BuildIdentity.display(this)
     EdgeToEdgeHelper.enable(this)
     EdgeToEdgeHelper.applySystemBarPadding(findViewById(R.id.settings_scroll))
 

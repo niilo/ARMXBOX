@@ -1,6 +1,6 @@
-# xemu Android
+# ARMXBOX Android
 
-This directory contains the Android frontend and native build for xemu. The
+This directory contains the ARMXBOX Android frontend and native build, based on xemu. The
 Android entry point in `app/src/main/cpp/xemu_android.cpp` integrates the xemu
 core with SDL3 and the Android Vulkan/OpenGL rendering paths.
 

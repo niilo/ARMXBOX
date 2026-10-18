@@ -231,7 +231,7 @@ void ShowMainMenu()
         if (ImGui::BeginMenu("Help"))
         {
             if (ImGui::MenuItem("Help", NULL)) {
-                SDL_OpenURL("https://xemu.app/docs/getting-started/");
+                SDL_OpenURL("https://github.com/niilo/ARMXBOX#setup-requirements-user-files");
             }
 
             ImGui::MenuItem("Report Compatibility...", NULL,

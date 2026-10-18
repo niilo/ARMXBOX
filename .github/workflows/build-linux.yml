@@ -21,7 +21,7 @@ jobs:
         arch: [x86_64, aarch64]
         configuration: [debug, release]
     env:
-      ARTIFACT_NAME: xemu-ubuntu-${{ matrix.arch }}-${{ matrix.configuration }}
+      ARTIFACT_NAME: armxbox-ubuntu-${{ matrix.arch }}-${{ matrix.configuration }}
       CCACHE_DIR: /tmp/xemu-ccache
       CCACHE_MAXSIZE: 512M
       LTO_CACHE_DIR: /tmp/xemu-lto-cache
@@ -71,7 +71,7 @@ jobs:
     - name: Extract source package
       run: |
         mkdir src
-        tar -xf xemu-${{ inputs.pkg_version }}.tar.zst -C src --strip-components=2
+        tar -xf armxbox-${{ inputs.pkg_version }}.tar.zst -C src --strip-components=2
     - name: Create debian changelog
       run: |
         pushd src
@@ -134,14 +134,14 @@ jobs:
         ar x deb/*.deb
         mkdir appimage
         tar -C appimage -xf data.tar*
-        install -DT src/xemu.metainfo.xml appimage/usr/share/metainfo/xemu.metainfo.xml
+        install -DT src/armxbox.metainfo.xml appimage/usr/share/metainfo/armxbox.metainfo.xml
 
         ./linuxdeploy-${{ matrix.arch }}.AppImage --output appimage --appdir appimage
     - name: Bundle artifacts
       run: |
         mkdir -p dist
         tar -czvf ./dist/${{ env.ARTIFACT_NAME }}.tgz --transform "s#^dist#${{ env.ARTIFACT_NAME }}#" deb
-        mv xemu-*.AppImage dist
+        mv ARMXBOX-*.AppImage dist
     - name: Upload build artifact
       uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4
       with:

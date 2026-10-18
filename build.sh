@@ -11,14 +11,14 @@ target_arch=$(uname -m)
 package_windows() {
     rm -rf dist
     mkdir -p dist
-    cp build/qemu-system-i386w.exe dist/xemu.exe
-    python3 "${project_source_dir}/get_deps.py" dist/xemu.exe dist
+    cp build/qemu-system-i386w.exe dist/armxbox.exe
+    python3 "${project_source_dir}/get_deps.py" dist/armxbox.exe dist
 }
 
 package_wincross() {
     rm -rf dist
     mkdir -p dist
-    cp build/qemu-system-i386w.exe dist/xemu.exe
+    cp build/qemu-system-i386w.exe dist/armxbox.exe
     python3 ./scripts/gen-license.py --platform windows > dist/LICENSE.txt
 }
 
@@ -26,14 +26,14 @@ package_macos() {
     rm -rf dist
 
     # Copy in executable
-    mkdir -p dist/xemu.app/Contents/MacOS/
-    exe_path=dist/xemu.app/Contents/MacOS/xemu
-    lib_path=dist/xemu.app/Contents/Libraries/${target_arch}
+    mkdir -p dist/ARMXBOX.app/Contents/MacOS/
+    exe_path=dist/ARMXBOX.app/Contents/MacOS/armxbox
+    lib_path=dist/ARMXBOX.app/Contents/Libraries/${target_arch}
     lib_rpath=../Libraries/${target_arch}
     cp build/qemu-system-i386 ${exe_path}
 
     # Copy in in executable dylib dependencies
-    dylibbundler -cd -of -b -x dist/xemu.app/Contents/MacOS/xemu \
+    dylibbundler -cd -of -b -x dist/ARMXBOX.app/Contents/MacOS/armxbox \
         -d ${lib_path}/ \
         -p "@executable_path/${lib_rpath}/" \
         -s ${PWD}/macos-libs/${target_arch}/opt/local/lib/
@@ -57,14 +57,16 @@ package_macos() {
     done
 
     # Copy in runtime resources
-    mkdir -p dist/xemu.app/Contents/Resources
+    mkdir -p dist/ARMXBOX.app/Contents/Resources
 
     # Generate icon file
-    mkdir -p xemu.iconset
-    for r in 16 32 128 256 512; do cp "${project_source_dir}/ui/icons/xemu_${r}x${r}.png" "xemu.iconset/icon_${r}x${r}.png"; done
-    iconutil --convert icns --output dist/xemu.app/Contents/Resources/xemu.icns xemu.iconset
+    icon_prefix=armxbox
+    if test -n "$debug"; then icon_prefix=armxbox-dev; fi
+    mkdir -p armxbox.iconset
+    for r in 16 32 128 256 512; do cp "${project_source_dir}/ui/icons/${icon_prefix}_${r}x${r}.png" "armxbox.iconset/icon_${r}x${r}.png"; done
+    iconutil --convert icns --output dist/ARMXBOX.app/Contents/Resources/armxbox.icns armxbox.iconset
 
-    cp Info.plist dist/xemu.app/Contents/
+    cp Info.plist dist/ARMXBOX.app/Contents/
 
     if [[ -e "${project_source_dir}/XEMU_VERSION" ]]; then
       xemu_version="$(cat ${project_source_dir}/XEMU_VERSION | cut -f1 -d-)"
@@ -72,8 +74,8 @@ package_macos() {
       xemu_version="0.0.0"
     fi
 
-    plutil -replace CFBundleShortVersionString -string "${xemu_version}" dist/xemu.app/Contents/Info.plist
-    plutil -replace CFBundleVersion            -string "${xemu_version}" dist/xemu.app/Contents/Info.plist
+    plutil -replace CFBundleShortVersionString -string "${xemu_version}" dist/ARMXBOX.app/Contents/Info.plist
+    plutil -replace CFBundleVersion            -string "${xemu_version}" dist/ARMXBOX.app/Contents/Info.plist
 
     codesign --force --deep --preserve-metadata=entitlements,requirements,flags,runtime --sign - "${exe_path}"
     python3 ./scripts/gen-license.py --version-file=macos-libs/$target_arch/INSTALLED > dist/LICENSE.txt
@@ -82,7 +84,7 @@ package_macos() {
 package_linux() {
     rm -rf dist
     mkdir -p dist
-    cp build/qemu-system-i386 dist/xemu
+    cp build/qemu-system-i386 dist/armxbox
     if test -e "${project_source_dir}/XEMU_LICENSE"; then
       cp "${project_source_dir}/XEMU_LICENSE" dist/LICENSE.txt
     else
