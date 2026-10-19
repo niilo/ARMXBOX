@@ -85,8 +85,8 @@ android {
     minSdk = 29
     targetSdk = 36
 
-    versionCode = 42
-    versionName = "1.2.13"
+    versionCode = 43
+    versionName = "1.2.14"
     buildConfigField("boolean", "CPU_PROFILE_AVAILABLE", cpuProfileHooks.toString())
     buildConfigField("String", "TEST_BUILD_NAME", "\"$testBuildName\"")
     buildConfigField("String", "SOURCE_REVISION", "\"$sourceRevision\"")

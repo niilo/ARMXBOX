@@ -11,8 +11,8 @@ ARMXBOX is an original Xbox emulator for Android, based on xemu.
 
 ## Builds and versions
 
-- **ARMXBOX** is the signed release app (lime/teal icon).
-- **ARMXBOX Dev** is the separate Debug/Profile app (violet/amber icon with DEV badge).
+- **ARMXBOX** is the signed release app (green Xbox-style icon).
+- **ARMXBOX Dev** is the separate Debug/Profile app (red Xbox-style icon with DEV badge).
 - Settings and About show the installed version, variant and build number.
 - APK filenames include the version, variant and build host. Desktop executables are `armxbox` / `armxbox.exe`, and the macOS bundle is `ARMXBOX.app`.
 - Android package IDs, signing keys, existing settings and storage paths remain compatible with earlier X1 BOX builds. Dev and release retain separate app data.
