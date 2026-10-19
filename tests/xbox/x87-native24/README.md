@@ -49,7 +49,14 @@ Coverage includes:
   and seeds FE_INVALID before each call, proving no new hardware exception flag
   is introduced by rejected encodings, modes, signs, opcodes or zero divisors.
 
-The four negative controls must fail: removing exact-result pending SE/B
+Every direct API case also runs with a null inexact-output pointer, checking the
+same admission and result payload without computing a redundant flag. The
+caller may omit this output only when both guest inexact representations are
+already sticky. Helper-state comparisons cover clearing either flag and pending
+unmasked exceptions.
+
+The five negative controls must fail: skipping exactness when either sticky flag
+is set rather than requiring both, removing exact-result pending SE/B
 reconciliation, admitting wider operands through truncating conversion, losing
 the inexact flag, and replacing the guarded operation with an overbroad binary64
 operation followed by a binary32 cast. The last control uses the explicit
