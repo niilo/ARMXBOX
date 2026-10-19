@@ -55,10 +55,10 @@ x87n24_binop(int op, uint64_t al, uint16_t ah, uint64_t bl, uint16_t bh,
 
 static enum X87Native24Result
 x87n24_sqrt(uint64_t low, uint16_t high, uint64_t *rl, uint16_t *rh,
-           bool *inexact, bool need_inexact)
+           bool *inexact)
 {
     sqrt24_attempts++;
-    return test_x87n24_sqrt_impl(low, high, rl, rh, inexact, need_inexact);
+    return test_x87n24_sqrt_impl(low, high, rl, rh, inexact);
 }
 
 typedef struct TestClock {

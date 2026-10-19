@@ -63,7 +63,7 @@ static void numerical_case(int op, floatx80 a, floatx80 b)
     int old_rounding = fegetround();
     errno = EDOM;
     enum X87Native24Result outcome = op == 4 ?
-        x87n24_sqrt(a.low, a.high, &low, &high, &inexact, true) :
+        x87n24_sqrt(a.low, a.high, &low, &high, &inexact) :
         x87n24_binop(op, a.low, a.high, b.low, b.high,
                       &low, &high, &inexact, true);
     assert(fegetround() == old_rounding && errno == EDOM);
@@ -121,10 +121,11 @@ static void numerical_case(int op, floatx80 a, floatx80 b)
     bool noflag = true;
     int before_noflag = fetestexcept(FE_ALL_EXCEPT);
     enum X87Native24Result noflag_outcome = op == 4 ?
-        x87n24_sqrt(a.low, a.high, &noflag_low, &noflag_high, &noflag, false) :
+        x87n24_sqrt(a.low, a.high, &noflag_low, &noflag_high, &noflag) :
         x87n24_binop(op, a.low, a.high, b.low, b.high,
                       &noflag_low, &noflag_high, &noflag, false);
-    if (!noflag || noflag_outcome != outcome || noflag_low != low || noflag_high != high ||
+    if ((op != 4 && !noflag) || (op == 4 && noflag != inexact) ||
+        noflag_outcome != outcome || noflag_low != low || noflag_high != high ||
         fegetround() != old_rounding || errno != EDOM ||
         (outcome != X87N24_HIT &&
          fetestexcept(FE_ALL_EXCEPT) != before_noflag)) {

@@ -876,13 +876,7 @@ static inline bool x87_native_sqrt(CPUX86State *env, floatx80 *r)
                                            XEMU_FPU_REJECT_POLICY_OFF);
             return false;
         }
-        bool need_inexact = true;
-        inexact = false;
-        if ((get_float_exception_flags(&env->fp_status) & float_flag_inexact) &&
-            (env->fpus & FPUS_PE)) {
-            need_inexact = false;
-        }
-        result = x87n24_sqrt(r->low, r->high, &r->low, &r->high, &inexact, need_inexact);
+        result = x87n24_sqrt(r->low, r->high, &r->low, &r->high, &inexact);
         if (result != X87N24_HIT) {
             if (result == X87N24_REJECT_HOST) {
                 XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,

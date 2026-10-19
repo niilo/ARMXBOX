@@ -176,7 +176,7 @@ x87n24_binop(int op, uint64_t a_low, uint16_t a_high,
 
 static inline enum X87Native24Result
 x87n24_sqrt(uint64_t a_low, uint16_t a_high,
-           uint64_t *r_low, uint16_t *r_high, bool *inexact, bool need_inexact)
+           uint64_t *r_low, uint16_t *r_high, bool *inexact)
 {
     float a, r;
     uint64_t low;
@@ -195,9 +195,7 @@ x87n24_sqrt(uint64_t a_low, uint16_t a_high,
     }
     *r_low = low;
     *r_high = high;
-    if (need_inexact) {
-        *inexact = (double)r * (double)r != (double)a;
-    }
+    *inexact = (double)r * (double)r != (double)a;
     return X87N24_HIT;
 }
 
