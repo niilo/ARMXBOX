@@ -107,11 +107,15 @@ static inline bool x87n24_from_float(float value, uint64_t *low, uint16_t *high)
     return true;
 }
 
-/* Every non-HIT return leaves all three result outputs untouched. */
+/*
+ * Every non-HIT return leaves result outputs untouched. A false need_inexact
+ * skips exactness work when the caller already has both guest sticky flags.
+ * Operand admission, host mode checks and result computation are unchanged.
+ */
 static inline enum X87Native24Result
 x87n24_binop(int op, uint64_t a_low, uint16_t a_high,
             uint64_t b_low, uint16_t b_high,
-            uint64_t *r_low, uint16_t *r_high, bool *inexact)
+            uint64_t *r_low, uint16_t *r_high, bool *inexact, bool need_inexact)
 {
     float a, b, r;
     bool lost;
@@ -142,17 +146,17 @@ x87n24_binop(int op, uint64_t a_low, uint16_t a_high,
          * Checking both differences avoids a magnitude-selection branch and
          * detects tiny addends which a rounded double sum could also lose.
          */
-        lost = (double)r - (double)a != (double)b ||
-               (double)r - (double)b != (double)a;
+        lost = need_inexact && ((double)r - (double)a != (double)b ||
+                           (double)r - (double)b != (double)a);
         break;
     case X87N_MUL:
         r = a * b;
         /* The product of two 24-bit significands is exact in binary64. */
-        lost = (double)a * (double)b != (double)r;
+        lost = need_inexact && (double)a * (double)b != (double)r;
         break;
     case X87N_DIV:
         r = a / b;
-        lost = (double)r * (double)b != (double)a;
+        lost = need_inexact && (double)r * (double)b != (double)a;
         break;
     default:
         return X87N24_REJECT_INPUT;
@@ -164,7 +168,9 @@ x87n24_binop(int op, uint64_t a_low, uint16_t a_high,
     }
     *r_low = low;
     *r_high = high;
-    *inexact = lost;
+    if (need_inexact) {
+        *inexact = lost;
+    }
     return X87N24_HIT;
 }
 

@@ -132,6 +132,11 @@ native dependencies/alignment and source identity are checked separately.
 
 ## Prioritized next options
 
+[RC16](pocket-s-rc16.md) experiments with skipping redundant PC24 exactness
+reconstruction when both guest inexact flags are already sticky. It preserves
+result computation and exception reconciliation, with a fresh v1.2.14 control.
+Its runtime benefit remains subject to device comparison.
+
 The first focused implementation after release is
 [RC15's cold policy initializer](pocket-s-rc15.md), addressing option 2 below.
 It has a fresh release-equivalent control and requires device comparison;

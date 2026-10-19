@@ -46,10 +46,11 @@ static bool x87n_sqrt(uint64_t low, uint16_t high, uint64_t *rl,
 
 static enum X87Native24Result
 x87n24_binop(int op, uint64_t al, uint16_t ah, uint64_t bl, uint16_t bh,
-            uint64_t *rl, uint16_t *rh, bool *inexact)
+            uint64_t *rl, uint16_t *rh, bool *inexact, bool need_inexact)
 {
     binary24_attempts++;
-    return test_x87n24_binop_impl(op, al, ah, bl, bh, rl, rh, inexact);
+    return test_x87n24_binop_impl(op, al, ah, bl, bh, rl, rh, inexact,
+                                    need_inexact);
 }
 
 static enum X87Native24Result
@@ -134,6 +135,10 @@ static int get_floatx80_rounding_precision(const float_status *s)
 static int get_float_rounding_mode(const float_status *s)
 {
     return s->float_rounding_mode;
+}
+static int get_float_exception_flags(const float_status *s)
+{
+    return s->flags;
 }
 typedef struct TestFpuRegister {
     floatx80 d;

@@ -155,8 +155,11 @@ def main():
                 '(low & X87N24_DISCARDED_MASK)', 'false')
             flags_lost = original_header.replace('*inexact = lost;',
                                                   '*inexact = lost && false;')
+            either_sticky = actual.replace(
+                '& float_flag_inexact) &&\n            (env->fpus & FPUS_PE)',
+                '& float_flag_inexact) ||\n            (env->fpus & FPUS_PE)')
             if missing == actual or naive == original_header or \
-                    flags_lost == original_header:
+                    flags_lost == original_header or either_sticky == actual:
                 raise RuntimeError('negative control boundary changed')
             # An intentionally overbroad double-intermediate implementation.
             # The dedicated witness is (1 + 2^-24) + 2^-54: binary64 loses
@@ -166,7 +169,7 @@ def main():
             end = original_header.index('static inline', begin + 1)
             bad_double = '''static inline enum X87Native24Result
 x87n24_binop(int op, uint64_t al, uint16_t ah, uint64_t bl, uint16_t bh,
-            uint64_t *low, uint16_t *high, bool *inexact)
+            uint64_t *low, uint16_t *high, bool *inexact, bool need_inexact)
 {
     double a, b, result;
     if (!x87n24_host_nearest() || !x87n_to_double(al, ah, &a) ||
@@ -199,6 +202,8 @@ x87n24_binop(int op, uint64_t al, uint16_t ah, uint64_t bl, uint16_t bh,
                 ('operand-rounding', actual, naive, [], 'numerical mismatch'),
                 ('incorrect-inexact', actual, flags_lost, [],
                  'numerical mismatch'),
+                ('either-sticky', either_sticky, original_header, [],
+                 'state mismatch'),
                 ('double-rounding', actual, double_header,
                  ['double-rounding-witness'], 'numerical mismatch'),
             )
