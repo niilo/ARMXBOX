@@ -136,6 +136,10 @@ static int get_float_rounding_mode(const float_status *s)
 {
     return s->float_rounding_mode;
 }
+static int get_float_exception_flags(const float_status *s)
+{
+    return s->flags;
+}
 typedef struct TestFpuRegister {
     floatx80 d;
 } TestFpuRegister;
