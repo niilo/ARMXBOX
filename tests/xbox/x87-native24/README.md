@@ -49,7 +49,7 @@ Coverage includes:
   and seeds FE_INVALID before each call, proving no new hardware exception flag
   is introduced by rejected encodings, modes, signs, opcodes or zero divisors.
 
-Every direct API case also runs with a null inexact-output pointer, checking the
+Every direct API case also runs with an explicit false need_inexact argument, checking the
 same admission and result payload without computing a redundant flag. The
 caller may omit this output only when both guest inexact representations are
 already sticky. Helper-state comparisons cover clearing either flag and pending

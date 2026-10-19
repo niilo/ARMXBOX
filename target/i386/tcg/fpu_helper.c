@@ -814,14 +814,14 @@ static inline bool x87_native_binop(CPUX86State *env, int op, floatx80 a,
             return false;
         }
         /* Both sticky representations must already contain inexact. */
-        bool *inexact_out = &inexact;
+        bool need_inexact = true;
         inexact = false;
         if ((get_float_exception_flags(&env->fp_status) & float_flag_inexact) &&
             (env->fpus & FPUS_PE)) {
-            inexact_out = NULL;
+            need_inexact = false;
         }
         result = x87n24_binop(op, a.low, a.high, b.low, b.high,
-                             &r->low, &r->high, inexact_out);
+                             &r->low, &r->high, &inexact, need_inexact);
         if (result != X87N24_HIT) {
             if (result == X87N24_REJECT_HOST) {
                 XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_BINOP,
@@ -876,13 +876,13 @@ static inline bool x87_native_sqrt(CPUX86State *env, floatx80 *r)
                                            XEMU_FPU_REJECT_POLICY_OFF);
             return false;
         }
-        bool *inexact_out = &inexact;
+        bool need_inexact = true;
         inexact = false;
         if ((get_float_exception_flags(&env->fp_status) & float_flag_inexact) &&
             (env->fpus & FPUS_PE)) {
-            inexact_out = NULL;
+            need_inexact = false;
         }
-        result = x87n24_sqrt(r->low, r->high, &r->low, &r->high, inexact_out);
+        result = x87n24_sqrt(r->low, r->high, &r->low, &r->high, &inexact, need_inexact);
         if (result != X87N24_HIT) {
             if (result == X87N24_REJECT_HOST) {
                 XEMU_FPU_PROFILE_REJECT_DIRECT(XEMU_FPU_REJECT_SQRT,

@@ -169,7 +169,7 @@ def main():
             end = original_header.index('static inline', begin + 1)
             bad_double = '''static inline enum X87Native24Result
 x87n24_binop(int op, uint64_t al, uint16_t ah, uint64_t bl, uint16_t bh,
-            uint64_t *low, uint16_t *high, bool *inexact)
+            uint64_t *low, uint16_t *high, bool *inexact, bool need_inexact)
 {
     double a, b, result;
     if (!x87n24_host_nearest() || !x87n_to_double(al, ah, &a) ||

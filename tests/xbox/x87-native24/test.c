@@ -63,9 +63,9 @@ static void numerical_case(int op, floatx80 a, floatx80 b)
     int old_rounding = fegetround();
     errno = EDOM;
     enum X87Native24Result outcome = op == 4 ?
-        x87n24_sqrt(a.low, a.high, &low, &high, &inexact) :
+        x87n24_sqrt(a.low, a.high, &low, &high, &inexact, true) :
         x87n24_binop(op, a.low, a.high, b.low, b.high,
-                      &low, &high, &inexact);
+                      &low, &high, &inexact, true);
     assert(fegetround() == old_rounding && errno == EDOM);
     if (outcome != X87N24_HIT) {
         if (low != UINT64_C(0x123456789abcdef0) || high != 0xa5a5 ||
@@ -118,12 +118,13 @@ static void numerical_case(int op, floatx80 a, floatx80 b)
     /* Dropping flag output must preserve admission and all result bits. */
     uint64_t noflag_low = UINT64_C(0x123456789abcdef0);
     uint16_t noflag_high = 0xa5a5;
+    bool noflag = true;
     int before_noflag = fetestexcept(FE_ALL_EXCEPT);
     enum X87Native24Result noflag_outcome = op == 4 ?
-        x87n24_sqrt(a.low, a.high, &noflag_low, &noflag_high, NULL) :
+        x87n24_sqrt(a.low, a.high, &noflag_low, &noflag_high, &noflag, false) :
         x87n24_binop(op, a.low, a.high, b.low, b.high,
-                      &noflag_low, &noflag_high, NULL);
-    if (noflag_outcome != outcome || noflag_low != low || noflag_high != high ||
+                      &noflag_low, &noflag_high, &noflag, false);
+    if (!noflag || noflag_outcome != outcome || noflag_low != low || noflag_high != high ||
         fegetround() != old_rounding || errno != EDOM ||
         (outcome != X87N24_HIT &&
          fetestexcept(FE_ALL_EXCEPT) != before_noflag)) {

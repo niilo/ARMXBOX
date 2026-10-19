@@ -9,7 +9,7 @@ The guarded binary32 operation, full 80-bit result representation, operand
 bounds, guest/host rounding checks and softfloat fallbacks remain unchanged.
 Neither PC53 nor renderer, audio, input, scheduling or VBLANK behavior changes.
 Clearing either guest flag immediately restores exactness calculation; there is
-no cached assumption about flag lifetime. The low-level API accepts a null
+no cached assumption about flag lifetime. The low-level API accepts an explicit boolean to omit the
 inexact output only when its caller does not need that output.
 
 ## Expected mechanism and limits
@@ -25,7 +25,7 @@ FPS improvement or a promise of 60 FPS.
 GCC ASan/UBSan and Clang each pass all four feature/policy combinations against
 the immutable RC13 helpers and actual softfloat: 1,774,436 complete modeled
 helper-state comparisons plus 1,774,469 direct numerical/rejection cases per
-combination. Each direct case also compares the null-output API for unchanged
+combination. Each direct case also compares the flag-omission API for unchanged
 admission/result, rounding, errno and rejection-side hardware flags. Five
 negative controls include skipping with either flag instead of requiring both.
 Host tests do not execute Android FPCR, guest games or device lifecycle.
