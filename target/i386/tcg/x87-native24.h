@@ -108,6 +108,26 @@ static inline bool x87n24_from_float(float value, uint64_t *low, uint16_t *high)
 }
 
 /*
+ * Admitted PC24 operations produce only normal binary32 values or signed zero
+ * (see the operand-bound proof above). Pack those results without rechecking
+ * impossible subnormal/special cases. The checked converter remains available
+ * for callers without that proof. Operand and host admission stay unchanged.
+ */
+static inline void x87n24_from_bounded_float(float value, uint64_t *low,
+                                           uint16_t *high)
+{
+    uint32_t bits;
+
+    memcpy(&bits, &value, sizeof(bits));
+    uint32_t exp = (bits >> 23) & 0xff;
+    uint64_t significand = (UINT64_C(1) << 63) |
+                          ((uint64_t)(bits & X87N24_FRAC_MASK) << 40);
+
+    *low = exp ? significand : 0;
+    *high = ((bits >> 31) << 15) | (exp ? exp + (16383 - 127) : 0);
+}
+
+/*
  * Every non-HIT return leaves result outputs untouched. A false need_inexact
  * skips exactness work when the caller already has both guest sticky flags.
  * Operand admission, host mode checks and result computation are unchanged.
@@ -162,10 +182,7 @@ x87n24_binop(int op, uint64_t a_low, uint16_t a_high,
         return X87N24_REJECT_INPUT;
     }
 
-    /* The operand bounds prove this cannot reject a normal native result. */
-    if (!x87n24_from_float(r, &low, &high)) {
-        return X87N24_REJECT_RESULT;
-    }
+    x87n24_from_bounded_float(r, &low, &high);
     *r_low = low;
     *r_high = high;
     if (need_inexact) {
@@ -190,9 +207,7 @@ x87n24_sqrt(uint64_t a_low, uint16_t a_high,
         return X87N24_REJECT_HOST;
     }
     r = sqrtf(a);
-    if (!x87n24_from_float(r, &low, &high)) {
-        return X87N24_REJECT_RESULT;
-    }
+    x87n24_from_bounded_float(r, &low, &high);
     *r_low = low;
     *r_high = high;
     *inexact = (double)r * (double)r != (double)a;

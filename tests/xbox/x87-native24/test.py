@@ -13,6 +13,7 @@ import sys
 import tempfile
 
 BASELINE = '649b22697867704f6d7c1585f4fb5d574da50b15'
+PACKING_BASELINE = 'bc0718444b040c114e17d707d0fe0741aefd9126'
 HELPERS = tuple('helper_' + name for name in (
     'fadd_ST0_FT0', 'fmul_ST0_FT0', 'fsub_ST0_FT0', 'fsubr_ST0_FT0',
     'fdiv_ST0_FT0', 'fdivr_ST0_FT0', 'fadd_STN_ST0', 'fmul_STN_ST0',
@@ -31,6 +32,17 @@ def main():
     repo = here.parents[2]
     sys.path.insert(0, str(here.parent / 'x87-transfer'))
     import test as transfer
+
+    header_source = (repo / 'target/i386/tcg/x87-native24.h').read_text()
+    old_header = subprocess.check_output(
+        ['git', 'show', PACKING_BASELINE + ':target/i386/tcg/x87-native24.h'],
+        cwd=repo, text=True)
+    for name in ('x87n24_host_nearest', 'x87n24_to_float', 'x87n24_from_float'):
+        if transfer.function(header_source, name) != transfer.function(old_header, name):
+            raise RuntimeError('immutable admission/checked converter changed: ' + name)
+    definitions = r'^#define X87N24_(?:EXP_LIMIT|FRAC_MASK|DISCARDED_MASK) .*$'
+    if re.findall(definitions, header_source, re.M) != re.findall(definitions, old_header, re.M):
+        raise RuntimeError('immutable PC24 operand bounds changed')
 
     current = (repo / 'target/i386/tcg/fpu_helper.c').read_text()
     old = subprocess.check_output(
@@ -105,6 +117,7 @@ def main():
         (out / header.name).write_bytes(header.read_bytes())
         manifest = {
             'baseline': BASELINE,
+            'packing_baseline': PACKING_BASELINE,
             'compiler': subprocess.check_output(shlex.split(args.cc) +
                                                 ['--version'], text=True),
             'compile_flags': flags,
@@ -158,8 +171,13 @@ def main():
             either_sticky = actual.replace(
                 '& float_flag_inexact) &&\n            (env->fpus & FPUS_PE)',
                 '& float_flag_inexact) ||\n            (env->fpus & FPUS_PE)')
+            bad_zero = original_header.replace(
+                '*low = exp ? significand : 0;', '*low = significand;')
+            bad_sign = original_header.replace(
+                '*high = ((bits >> 31) << 15) |', '*high = 0 |')
             if missing == actual or naive == original_header or \
-                    flags_lost == original_header or either_sticky == actual:
+                    flags_lost == original_header or either_sticky == actual or \
+                    bad_zero == original_header or bad_sign == original_header:
                 raise RuntimeError('negative control boundary changed')
             # An intentionally overbroad double-intermediate implementation.
             # The dedicated witness is (1 + 2^-24) + 2^-54: binary64 loses
@@ -204,6 +222,8 @@ x87n24_binop(int op, uint64_t al, uint16_t ah, uint64_t bl, uint16_t bh,
                  'numerical mismatch'),
                 ('either-sticky', either_sticky, original_header, [],
                  'state mismatch'),
+                ('bounded-zero', actual, bad_zero, [], 'packing mismatch'),
+                ('bounded-sign', actual, bad_sign, [], 'packing mismatch'),
                 ('double-rounding', actual, double_header,
                  ['double-rounding-witness'], 'numerical mismatch'),
             )
