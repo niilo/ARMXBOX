@@ -132,6 +132,10 @@ native dependencies/alignment and source identity are checked separately.
 
 ## Prioritized next options
 
+[RC17](pocket-s-rc17.md) adds bounded-result packing to RC16, preserving its
+existing operand domain and retaining RC16 as a separate device comparison.
+Both iterations remain untested on hardware; do not assume cumulative gains.
+
 [RC16](pocket-s-rc16.md) experiments with skipping redundant PC24 exactness
 reconstruction when both guest inexact flags are already sticky. It preserves
 result computation and exception reconciliation, with a fresh v1.2.14 control.

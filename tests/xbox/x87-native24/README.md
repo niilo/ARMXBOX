@@ -55,7 +55,15 @@ caller may omit this output only when both guest inexact representations are
 already sticky. Helper-state comparisons cover clearing either flag and pending
 unmasked exceptions.
 
-The five negative controls must fail: skipping exactness when either sticky flag
+RC17 additionally pins operand/host admission, bounds and the checked result
+converter to immutable RC16. Its bounded result packer is compared with that
+converter in 97,544 cases per configuration: all normal exponents, both signs,
+all fraction-bit bases/complements, fraction boundaries and signed zeros under
+four host rounding modes. The caller's operand proof is required; this is not
+an unchecked conversion API for arbitrary floats.
+
+The seven negative controls must fail: broken signed-zero or sign packing,
+skipping exactness when either sticky flag
 is set rather than requiring both, removing exact-result pending SE/B
 reconciliation, admitting wider operands through truncating conversion, losing
 the inexact flag, and replacing the guarded operation with an overbroad binary64

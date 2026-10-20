@@ -54,6 +54,52 @@ static uint64_t random64(void)
     return (uint64_t)random32() << 32 | random32();
 }
 static uint64_t cases, api_cases, accepted[5];
+static void packing_case(uint32_t bits)
+{
+    float value;
+    uint64_t low = 0, reference_low = 0;
+    uint16_t high = 0, reference_high = 0;
+
+    memcpy(&value, &bits, sizeof(value));
+    assert(x87n24_from_float(value, &reference_low, &reference_high));
+    int before = fetestexcept(FE_ALL_EXCEPT);
+    int rounding = fegetround();
+    errno = EDOM;
+    x87n24_from_bounded_float(value, &low, &high);
+    if (low != reference_low || high != reference_high ||
+        fetestexcept(FE_ALL_EXCEPT) != before || fegetround() != rounding ||
+        errno != EDOM) {
+        fprintf(stderr, "packing mismatch bits=%08" PRIx32 "\n", bits);
+        exit(1);
+    }
+}
+
+static void packing_equivalence(void)
+{
+    uint64_t count = 0;
+    for (unsigned rc = 0; rc < 4; rc++) {
+        const int modes[] = { FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO };
+        assert(fesetround(modes[rc]) == 0);
+        for (unsigned sign = 0; sign < 2; sign++) {
+            packing_case(sign << 31);
+            count++;
+            for (unsigned exp = 1; exp < 255; exp++) {
+                for (unsigned bit = 0; bit < 23; bit++) {
+                    packing_case((sign << 31) | (exp << 23) | (1u << bit));
+                    packing_case((sign << 31) | (exp << 23) |
+                                 (0x7fffff ^ (1u << bit)));
+                    count += 2;
+                }
+                packing_case((sign << 31) | (exp << 23));
+                packing_case((sign << 31) | (exp << 23) | 0x7fffff);
+                count += 2;
+            }
+        }
+    }
+    assert(fesetround(FE_TONEAREST) == 0);
+    printf("bounded/immutable-checked packing comparisons=%" PRIu64 " pass\n", count);
+}
+
 static void numerical_case(int op, floatx80 a, floatx80 b)
 {
     uint64_t low = UINT64_C(0x123456789abcdef0);
@@ -504,6 +550,7 @@ static void double_rounding_witness(void)
 }
 int main(int argc, char **argv)
 {
+    packing_equivalence();
     if (argc == 2 && !strcmp(argv[1], "double-rounding-witness")) {
         double_rounding_witness();
         return 0;

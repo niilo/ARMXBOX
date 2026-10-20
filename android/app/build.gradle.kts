@@ -53,9 +53,9 @@ val x87Transfer = providers.gradleProperty("xemu.x87Transfer")
 val x87Pc24 = providers.gradleProperty("xemu.x87Pc24")
   .map { it.toBooleanStrict() }.getOrElse(true)
 val pocketSCandidate = when {
-  !x87Pc24 -> if (x87Transfer) "rc16-transfer" else "rc16-pc24-off"
-  x87Transfer -> "rc16-combined"
-  else -> "rc16"
+  !x87Pc24 -> if (x87Transfer) "rc17-transfer" else "rc17-pc24-off"
+  x87Transfer -> "rc17-combined"
+  else -> "rc17"
 }
 val testBuildName = providers.gradleProperty("xemu.testBuildName").orElse("").get()
 require(testBuildName.isEmpty() || testBuildName.matches(Regex("[a-z0-9][a-z0-9-]{0,47}"))) {
