@@ -9,11 +9,12 @@ in the [user-supplied proposal](proposal.md). The RC16 and RC17 optimization
 experiments are paused and preserved on their existing branches. Their
 unvalidated runtime changes are not part of this starting point.
 
-**Status: branch and experiment plan only.** No FEX dependency, CPU adapter,
-HLE implementation, prototype APK or new performance measurement is provided by
-this initial commit. The existing full-system backend and Android app remain
-unchanged. A feature-gated runtime and launch-time backend selection are planned;
-they are not implemented yet.
+**Status: Phase 0 implementation underway.** The pinned FEXCore builds and links
+for Android ARM64, and the isolated CPU diagnostic passes ten cloud simulator
+checks. A separate phase0.1 APK and CI workflow are implemented. Direct Android
+execution, remaining fault/ABI/memory gates and performance remain unverified;
+broad HLE has not started. See [findings and gates](phase0-findings.md) and the
+[probe build/run instructions](../../../experiments/fex-runtime/README.md).
 
 ## Objective and constraints
 
@@ -36,7 +37,7 @@ Do not create a parallel custom optimizing JIT or claim a fixed FPS gain.
 
 ## Phase 0: first implementation scope
 
-All acceptance items below remain **unproven**. Do not begin broad kernel,
+The linked findings distinguish completed cloud checks from open gates. Do not begin broad kernel,
 graphics or audio HLE before the CPU/bridge/memory gates are demonstrated.
 
 1. **Baseline and dependency decision.** Inspect the current build graph and
@@ -97,8 +98,7 @@ redistribution of commercial games or proprietary SDK libraries is not required.
 Place future runtime sources under a dedicated directory, such as
 `experiments/fex-runtime/`, with explicit target membership. Recheck actual glob
 coverage before adding code; do not put experimental files into existing `hw`,
-`target`, `ui` or root source globs accidentally. No experimental target is added
-by this documentation commit.
+`target`, `ui` or root source globs accidentally. The Phase 0 probe now lives there as a separate explicit CMake project.
 
 The recent SSX 3 3x Control capture is a useful user reference, not a complete
 repeatable Phase 0 benchmark: first38 settled reports averaged 38.12 logged FPS,
