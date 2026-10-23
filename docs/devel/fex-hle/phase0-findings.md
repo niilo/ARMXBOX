@@ -93,6 +93,15 @@ No general Android execution claim follows from these build checks.
    prototype, not a general production hook API. Callback code deliberately
    clobbers SIMD and x87 controls; preservation is checked after resume.
 
+## Phase0.2 follow-up
+
+[Phase0.2](phase02.md) replaces the HLT shortcut with explicit pinned generated-
+exception stop handlers and adds five exception/PC/resume checks. It also adds
+native x18/SP/GPR/vector/FP-control witnesses and adapter-owned FPCR/FPSR
+restoration. The 15 CPU checks and five witness controls pass in the cloud;
+new native ABI/exception behavior still needs a phase0.2 device report. Raw
+memory-fault and MMIO recovery are not supplied by these stop handlers.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |
@@ -103,8 +112,8 @@ No general Android execution claim follows from these build checks.
 | CPU/bridge/alias/invalidation fixtures | 10 passing checks under VIXL and in the user Android report | Passed for constructed fixtures |
 | Actual Android ARM64 execution | User report: native ARM64 process, 4096-byte pages, all ten checks pass | Basic execution passed |
 | Full typed bridge and state contract | Current controlled stdcall and reverse-call subset only | Partial |
-| Fault recovery, MMIO and guest-PC recovery | No general signal/exception adapter yet | Open |
-| x18, native stack/TLS/signals, instruction cache | Source audit/build only | Device/runtime witnesses open |
+| Fault recovery, MMIO and guest-PC recovery | Generated exceptions/PC/resume tested in phase0.2 cloud; no raw memory-fault adapter | Partial; device/generated and raw memory/MMIO gates open |
+| x18, native stack/TLS/signals, instruction cache | Phase0.2 adds six boundary witnesses; limited witness controls pass under VIXL | New device report and remaining runtime contracts open |
 | 4 KiB guest / 16 KiB host mapping semantics | Known assumptions identified; fail explicitly | Unsupported in phase0.1 |
 | Xbox CPU policy | IA-32 forced; CPUID and instruction restrictions not complete | Open |
 | Performance versus reference | No title runs on experimental backend | Unmeasured |

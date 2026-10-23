@@ -10,6 +10,7 @@
 #include <FEXCore/Utils/LogManager.h>
 #include <FEXCore/Utils/AllocatorHooks.h>
 #include <atomic>
+#include <array>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -23,6 +24,9 @@
 #include <android/log.h>
 #endif
 
+#ifdef __aarch64__
+extern "C" void armxbox_probe_execute_abi(void*, void*, void (*)(void*, void*), uint64_t*);
+#endif
 namespace {
 constexpr uintptr_t Code = 0x10000000, Data = Code + 0x4000, Stack = Code + 0x8000;
 constexpr size_t RegionSize = 0x10000;
@@ -45,6 +49,8 @@ struct Report {
   }
   void check(const char* name, bool result) {
     failed += !result; line("%s %s\n", result ? "PASS" : "FAIL", name);
+    char message[256]; snprintf(message, sizeof message, "%s %s", result ? "PASS" : "FAIL", name);
+    diagnosticLog(message);
   }
 };
 // No Linux syscall forwarding. An unexpected guest syscall terminates the probe.
@@ -64,7 +70,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.2; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -103,7 +109,6 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   {
     diagnosticLog("FEX probe: context setup");
     auto context = FEXCore::Context::Context::CreateNewContext(features);
-    context->EnableExitOnHLT();
     context->SetSignalDelegator(&signals);
     context->SetSyscallHandler(&calls);
     diagnosticLog("FEX probe: dispatcher setup");
@@ -112,6 +117,29 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     auto* thread = context->CreateThread(nullptr);
     FEXCore::Allocator::RegisterTLSData(thread);
     auto& state = thread->CurrentFrame->State;
+    // Pinned FEX dispatcher contract: Break resets the stack and publishes fault
+    // metadata, but architectural registers still need spilling before stopping.
+    auto& pointers = thread->CurrentFrame->Pointers;
+    pointers.GuestSignal_SIGILL = pointers.ThreadStopHandlerSpillSRA;
+    pointers.GuestSignal_SIGTRAP = pointers.ThreadStopHandlerSpillSRA;
+    pointers.GuestSignal_SIGSEGV = pointers.ThreadStopHandlerSpillSRA;
+    std::array<bool, 6> abiOK{true, true, true, true, true, true};
+    auto execute = [&] {
+#ifdef __aarch64__
+      uint64_t checks[6]{};
+      armxbox_probe_execute_abi(context.get(), thread, [](void* ctx, void* cpu) {
+        // FEX's dispatcher preserves GPR/SIMD callee-saved state, but leaves
+        // host FPCR/FPSR ownership to its frontend. Scope guest FP state here.
+        uint64_t hostFPCR, hostFPSR;
+        asm volatile("mrs %0, fpcr\n mrs %1, fpsr" : "=r"(hostFPCR), "=r"(hostFPSR) :: "memory");
+        static_cast<FEXCore::Context::Context*>(ctx)->ExecuteThread(static_cast<FEXCore::Core::InternalThreadState*>(cpu));
+        asm volatile("msr fpcr, %0\n msr fpsr, %1" :: "r"(hostFPCR), "r"(hostFPSR) : "memory");
+      }, checks);
+      for (size_t i = 0; i < abiOK.size(); ++i) abiOK[i] = abiOK[i] && checks[i];
+#else
+      context->ExecuteThread(thread);
+#endif
+    };
     FEXCore::Core::CPUState::gdt_segment gdt[32]{};
     gdt[1].D = 1; // IA-32 default operand size, L=0.
     state.segment_arrays[0] = gdt;
@@ -133,7 +161,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
       state.rip = Code;
       state.gregs[FEXCore::X86State::REG_RSP] = Stack + 0x1000;
       diagnosticLog("FEX probe: execute fixture");
-      context->ExecuteThread(thread);
+      execute();
     };
     const unsigned char arithmetic[] = {0xb8,0xff,0xff,0xff,0xff,0xbb,0,0,0,0,0x83,0xc0,1,0x83,0xd3,0,0xf4};
     run(arithmetic, sizeof arithmetic);
@@ -157,8 +185,28 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     const unsigned char resume[] = {0xb8,40,0,0,0,0xf4,0x83,0xc0,2,0xf4};
     run(resume, sizeof resume);
     state.rip = Code + 6;
-    context->ExecuteThread(thread);
+    execute();
     report.check("run/resume retains GPR state", state.gregs[0] == 42 && state.rip == Code + 9);
+    const auto isExit = [&](uint8_t signal, uint8_t trap, uint64_t pc, uint16_t error = 0) {
+      const auto& fault = thread->CurrentFrame->SynchronousFaultData;
+      return fault.FaultToTopAndGeneratedException && fault.Signal == signal &&
+             fault.TrapNo == trap && fault.err_code == error && state.rip == pc;
+    };
+    report.check("HLT exit carries guest PC and generated exception metadata", isExit(SIGSEGV, 13, Code + 9));
+    const unsigned char invalid[] = {0x0f,0x0b,0xb8,42,0,0,0,0xf4};
+    state.gregs[0] = 0x1234;
+    run(invalid, sizeof invalid);
+    report.check("UD2 controlled exit preserves faulting PC and GPR", isExit(SIGILL, 6, Code) && state.gregs[0] == 0x1234);
+    state.rip = Code + 2;
+    execute();
+    report.check("resume after handled UD2 reaches next fixture entry", isExit(SIGSEGV, 13, Code + 7) && state.gregs[0] == 42);
+    const unsigned char breakpoint[] = {0xcc,0xb8,99,0,0,0,0xf4};
+    state.gregs[0] = 17;
+    run(breakpoint, sizeof breakpoint);
+    report.check("INT3 controlled exit reports next PC without executing it", isExit(SIGTRAP, 3, Code + 1) && state.gregs[0] == 17);
+    const unsigned char interrupt[] = {0xcd,0x20,0xf4};
+    run(interrupt, sizeof interrupt);
+    report.check("unsupported INT reports GP with exact selector error", isExit(SIGSEGV, 13, Code, 0x102));
     // A typed exit-based stdcall prototype, using controlled fixtures only.
     // Guest call -> HLT stub -> native body -> reverse guest callback -> resume.
     const unsigned char caller[] = {0x6a,22,0x6a,20,0xe8,0xf7,0,0,0,0xf4};
@@ -185,7 +233,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
         callbackStack[1] = value;
         state.gregs[4] = Stack + 0x800;
         state.rip = Code + 0x140;
-        context->ExecuteThread(thread);
+        execute();
         bridge &= state.rip == Code + 0x180 && state.gregs[4] == Stack + 0x804;
         return static_cast<uint32_t>(state.gregs[0]);
       };
@@ -196,7 +244,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
       state.gregs[0] = result;
       state.gregs[4] = esp + 12; // stdcall: pop return address and two arguments.
       state.rip = Code + 9;
-      context->ExecuteThread(thread);
+      execute();
       bridge &= state.gregs[0] == 42 && state.gregs[4] == Stack + 0x1000 &&
                 state.gregs[3] == 0x11223344 && state.gregs[6] == 0x55667788 && state.gregs[7] == 0x12344321;
       report.check("callback restores FPU/SIMD/control/flags state",
@@ -231,8 +279,18 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
       context->InvalidateThreadCachedCodeRange(thread, Code, sizeof original);
     }
     state.rip = Code;
-    context->ExecuteThread(thread);
+    execute();
     report.check("explicit code invalidation observes modified instruction", state.gregs[0] == 42);
+#ifdef __aarch64__
+    report.check("Android x18 unchanged across all engine entries/exits", abiOK[0]);
+    report.check("native SP restored and 16-byte aligned at return boundary", abiOK[1]);
+    report.check("AAPCS64 x19-x29 preserved", abiOK[2]);
+    report.check("AAPCS64 d8-d15 low halves preserved", abiOK[3]);
+    report.check("native FPCR restored after guest execution", abiOK[4]);
+    report.check("native FPSR restored after guest execution", abiOK[5]);
+#else
+    report.line("UNVERIFIED Android x18/SP/GPR/SIMD/FPCR/FPSR witnesses: run native ARM64 APK\n");
+#endif
     FEXCore::Allocator::UninstallTLSData(thread);
     context->DestroyThread(thread);
     FEXCore::Allocator::munmap(shadow, ShadowSize + 2 * page);
@@ -240,6 +298,6 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   FEXCore::Config::Shutdown();
   // Process-owned allocator remains alive; never unmap live global FEX objects.
   munmap(mapping, RegionSize);
-  report.line("Result: %s; full bridge/fault/16K/device/performance gates remain open\n", report.failed ? "FAIL" : "CPU FIXTURES PASS");
+  report.line("Result: %s; raw-memory/MMIO, full bridge, 16K, Xbox CPU policy and performance gates remain open\n", report.failed ? "FAIL" : "CPU FIXTURES PASS");
   return report.failed ? 1 : 0;
 }

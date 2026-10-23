@@ -26,13 +26,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest -j 2
+          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest armxbox_abi_witness_test -j 2
+          timeout 30s "$RUNNER_TEMP/fex-host/armxbox_abi_witness_test" "$RUNNER_TEMP/fex-host/abi_witness.bin" | tee "$RUNNER_TEMP/fex-abi-witness.txt"
           timeout 60s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" | tee "$RUNNER_TEMP/fex-fixtures.txt"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
           name: fex-phase0-host-report
-          path: ${{ runner.temp }}/fex-fixtures.txt
+          path: |
+            ${{ runner.temp }}/fex-fixtures.txt
+            ${{ runner.temp }}/fex-abi-witness.txt
           if-no-files-found: ignore
   android-diagnostic:
     needs: cpu-fixtures
@@ -64,9 +67,9 @@ jobs:
         run: bash experiments/fex-runtime/scripts/package-apk.sh "$RUNNER_TEMP/fex-android" "$RUNNER_TEMP/fex-apk"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: armxbox-fex-phase0.1-debug
+          name: armxbox-fex-phase0.2-debug
           path: |
-            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.1-debug.apk
+            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.2-debug.apk
             ${{ runner.temp }}/fex-apk/assets/THIRD_PARTY_NOTICES
           if-no-files-found: error
           retention-days: 30

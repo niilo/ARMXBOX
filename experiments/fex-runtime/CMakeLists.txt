@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.22)
 project(ARMXBOXFexProbe LANGUAGES C CXX ASM)
 # Intentionally separate from the production Android C++17 build.
 option(ARMXBOX_HOST_SIMULATOR "Run generated ARM64 under VIXL on x86-64 Linux (not device proof)" OFF)
+if(ARMXBOX_HOST_SIMULATOR AND (ANDROID OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$"))
+  message(FATAL_ERROR "Host simulation requires x86-64 Linux; use the Android target for native ARM64")
+endif()
 if(NOT ARMXBOX_HOST_SIMULATOR AND (NOT ANDROID OR NOT ANDROID_ABI STREQUAL "arm64-v8a"))
   message(FATAL_ERROR "This probe requires the Android ARM64 NDK toolchain")
 endif()
@@ -75,9 +78,20 @@ target_link_libraries(armxbox_fex_diagnostic PRIVATE FEXCore FEXCore_Base Jemall
 target_compile_options(armxbox_fex_diagnostic PRIVATE -fno-exceptions)
 target_link_options(armxbox_fex_diagnostic PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384)
 if(ANDROID)
-  target_sources(armxbox_fex_diagnostic PRIVATE jni.cpp)
+  target_sources(armxbox_fex_diagnostic PRIVATE jni.cpp abi_witness.S)
   target_link_libraries(armxbox_fex_diagnostic PRIVATE log)
 else()
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/abi_witness.bin"
+    COMMAND "${CMAKE_C_COMPILER}" --target=aarch64-linux-gnu -c
+      "${CMAKE_CURRENT_SOURCE_DIR}/abi_witness.S" -o "${CMAKE_CURRENT_BINARY_DIR}/abi_witness.o"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/extract-text.py"
+      "${CMAKE_CURRENT_BINARY_DIR}/abi_witness.o" "${CMAKE_CURRENT_BINARY_DIR}/abi_witness.bin"
+    DEPENDS abi_witness.S scripts/extract-text.py VERBATIM)
+  add_custom_target(armxbox_abi_blob DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/abi_witness.bin")
+  add_executable(armxbox_abi_witness_test abi_witness_test.cpp)
+  target_link_libraries(armxbox_abi_witness_test PRIVATE vixl::vixl)
+  add_dependencies(armxbox_abi_witness_test armxbox_abi_blob)
   add_executable(armxbox_fex_selftest main.cpp)
   target_link_libraries(armxbox_fex_selftest PRIVATE armxbox_fex_diagnostic)
 endif()
