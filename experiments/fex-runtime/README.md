@@ -61,14 +61,17 @@ fault handler and cannot safely run arbitrary guest code.
 See [Phase 0 findings](../../docs/devel/fex-hle/phase0-findings.md) for the engine
 pin, licenses, source patch, embedding obligations and acceptance matrix.
 
-Ten host checks cover integer carry, SSE2, MMX, x87, FS base, resume, callback
+All ten checks passed both in the host simulator and in the
+[user Android report](../../docs/devel/fex-hle/phase0-android-report.md). They cover
+integer carry, SSE2, MMX, x87, FS base, resume, callback
 FPU/SIMD/flags preservation, typed stdcall/reverse callback/stack cleanup,
 generated accesses through aliases, and explicit invalidation. The bridge is an
 exit-based prototype using HLT stubs and nested `ExecuteThread`, not an upstream
 Linux thunk or a completed production callback ABI. SSE2 here exercises engine
 state; the final Xbox CPUID/instruction policy remains to be implemented.
 
-The next gate is direct Android ARM64 execution, then controlled fault/MMIO exits,
+Basic direct Android ARM64 execution on 4 KiB pages is now demonstrated.
+The next gates are controlled fault/MMIO exits,
 x18/AAPCS64/cache-publication witnesses and the remaining bridge/memory contracts.
 Broad XBE/kernel, graphics and audio HLE must wait for those gates. Keep original
 backend comparisons separate from CPU fixture results.

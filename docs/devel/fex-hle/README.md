@@ -10,9 +10,11 @@ experiments are paused and preserved on their existing branches. Their
 unvalidated runtime changes are not part of this starting point.
 
 **Status: Phase 0 implementation underway.** The pinned FEXCore builds and links
-for Android ARM64, and the isolated CPU diagnostic passes ten cloud simulator
-checks. A separate phase0.1 APK and CI workflow are implemented. Direct Android
-execution, remaining fault/ABI/memory gates and performance remain unverified;
+for Android ARM64, and the isolated CPU diagnostic passes all ten checks both
+in the cloud simulator and in the [user Android report](phase0-android-report.md).
+Basic native Android execution on 4 KiB pages is demonstrated. A separate phase0.1
+APK and CI workflow are implemented. Remaining fault/ABI/memory gates and
+performance remain unverified;
 broad HLE has not started. See [findings and gates](phase0-findings.md) and the
 [probe build/run instructions](../../../experiments/fex-runtime/README.md).
 

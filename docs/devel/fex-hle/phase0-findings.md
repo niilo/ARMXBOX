@@ -5,8 +5,9 @@
 Retain FEXCore provisionally. Its full CPU core compiles and links against Android
 ARM64/Bionic with one narrow source patch. Ten constructed fixtures execute
 successfully through FEX's generated ARM64 under the upstream VIXL simulator on
-x86-64 Linux. Direct Android execution and the complete Phase 0 acceptance gate
-remain open. There is no measured title-performance improvement yet.
+x86-64 Linux. The [user Android report](phase0-android-report.md) also passes
+all ten fixtures in a native ARM64 process with 4 KiB pages. Basic direct Android
+execution is demonstrated; the complete Phase 0 acceptance gate remains open. There is no measured title-performance improvement yet.
 
 The first experiment build is **phase0.1**, a separate diagnostic application.
 The existing full-system backend, Android build graph and C++17 setting are
@@ -99,8 +100,8 @@ No general Android execution claim follows from these build checks.
 | Pin/licenses/dependency boundary | Inventory, lock, reproducible preparation | Cloud increment complete |
 | Android full-core compilation/link | NDK ARM64/API29, all-object link, no undefined symbols | Passed locally |
 | Diagnostic packaging | Separate app, signed APK, signature/alignment verification | Passed locally |
-| CPU/bridge/alias/invalidation fixtures | 10 passing checks under VIXL | Passed in cloud; device pending |
-| Actual Android ARM64 execution | Install and run the diagnostic in an Android app process | Unverified |
+| CPU/bridge/alias/invalidation fixtures | 10 passing checks under VIXL and in the user Android report | Passed for constructed fixtures |
+| Actual Android ARM64 execution | User report: native ARM64 process, 4096-byte pages, all ten checks pass | Basic execution passed |
 | Full typed bridge and state contract | Current controlled stdcall and reverse-call subset only | Partial |
 | Fault recovery, MMIO and guest-PC recovery | No general signal/exception adapter yet | Open |
 | x18, native stack/TLS/signals, instruction cache | Source audit/build only | Device/runtime witnesses open |
