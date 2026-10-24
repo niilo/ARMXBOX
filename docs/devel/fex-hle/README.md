@@ -9,7 +9,8 @@ in the [user-supplied proposal](proposal.md). The RC16 and RC17 optimization
 experiments are paused and preserved on their existing branches. Their
 unvalidated runtime changes are not part of this starting point.
 
-**Status: Phase 0 implementation underway.** [Phase0.3](phase03.md) fixes
+**Status: Phase 0 implementation underway.** [Phase0.4](phase04.md) adds
+scoped native memory-fault and word-MMIO probes; device validation is pending. [Phase0.3](phase03.md) fixes
 IA-32 divide errors with hardware-checked arithmetic matrices. [Phase0.2](phase02.md) adds
 controlled generated-exception exits and native ABI witnesses; the
 [Pocket S report](phase02-android-report.md) passes all 21 checks. The pinned FEXCore builds and links

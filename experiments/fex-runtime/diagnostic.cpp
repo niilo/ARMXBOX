@@ -1,5 +1,8 @@
 #include "diagnostic.h"
 #include "division_cases.h"
+#ifdef __ANDROID__
+#include "raw_fault_probe.h"
+#endif
 #include <cstdlib>
 #include <FEXCore/Config/Config.h>
 #include <FEXCore/Core/Context.h>
@@ -72,7 +75,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.3; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.4; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -377,6 +380,15 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
       snprintf(label,sizeof label,"%s%u aliased dividend/divisor: %u cases",signedDivide?"IDIV":"DIV",bits,aliasTotal);
       report.check(label,aliasFailures==0);
     }
+#ifdef __ANDROID__
+    using Run = decltype(execute);
+    const auto raw=armxbox::runRawFaultProbe(context.get(),thread,Code,Code+RegionSize-4096,[](void* run){(*static_cast<Run*>(run))();},&execute);
+    const char* rawLabels[]={"raw protected read: exact guest PC/registers/flags","typed MMIO read: one service and resume","raw protected write: exact guest PC/registers/flags","typed MMIO write: one service and resume","raw unmapped read: exact guest PC/registers/flags","typed unmapped MMIO read: service and resume","raw unmapped write: exact guest PC/registers/flags","typed unmapped MMIO write: service and resume","DIV memory fault precedes arithmetic error","IDIV memory fault precedes arithmetic error","original SIGSEGV registration restored"};
+    for(unsigned i=0;i<raw.passed.size();++i) report.check(rawLabels[i],raw.passed[i]);
+    if(raw.detail[0]) report.line("Raw-fault detail: %s\n",raw.detail);
+#else
+    report.line("UNVERIFIED native raw-fault/MMIO recovery: run Android ARM64 APK\n");
+#endif
 #ifdef __aarch64__
     report.check("Android x18 unchanged across all engine entries/exits", abiOK[0]);
     report.check("native SP restored and 16-byte aligned at return boundary", abiOK[1]);
@@ -394,6 +406,6 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   FEXCore::Config::Shutdown();
   // Process-owned allocator remains alive; never unmap live global FEX objects.
   munmap(mapping, RegionSize);
-  report.line("Result: %s; raw-memory/MMIO, full bridge, 16K, Xbox CPU policy and performance gates remain open\n", report.failed ? "FAIL" : "CPU FIXTURES PASS");
+  report.line("Result: %s; general MMIO/unaligned/atomic accesses, full bridge, 16K, Xbox CPU policy and performance gates remain open\n", report.failed ? "FAIL" : "CPU FIXTURES PASS");
   return report.failed ? 1 : 0;
 }

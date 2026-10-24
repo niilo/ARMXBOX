@@ -112,6 +112,16 @@ keeps memory divisors single-read and the valid path to one native divide.
 The Pocket S report for this new behavior is pending. Raw memory/MMIO recovery
 and the other full-runtime gates remain open.
 
+## Phase0.4 follow-up
+
+[Phase0.4](phase04.md) adds a scoped Android raw-memory-fault adapter and typed
+word-MMIO service/resume fixtures. Host validation covers 54 ownership, decoding
+and at-most-once transaction checks; seven decoding cases also match observed
+ARM load/store effects under VIXL. The cumulative native probe expects 50 PASS
+lines. Android signal delivery, ucontext recovery and registration restoration
+remain pending the device report. General MMIO and full-runtime memory semantics
+are still open; this scoped diagnostic is not a production fault handler.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |
@@ -122,7 +132,7 @@ and the other full-runtime gates remain open.
 | CPU/bridge/alias/invalidation fixtures | 10 passing checks under VIXL and in the user Android report | Passed for constructed fixtures |
 | Actual Android ARM64 execution | User report: native ARM64 process, 4096-byte pages, all ten checks pass | Basic execution passed |
 | Full typed bridge and state contract | Current controlled stdcall and reverse-call subset only | Partial |
-| Fault recovery, MMIO and guest-PC recovery | Generated exceptions/PC/resume tested in phase0.2 cloud; no raw memory-fault adapter | Generated fixture cases pass on Pocket S; raw memory/MMIO open; new divide fix pending device validation |
+| Fault recovery, MMIO and guest-PC recovery | Generated exceptions pass on Pocket S; phase0.4 scoped raw-fault/MMIO adapter compiles and passes host policy controls | New raw-fault/MMIO and divide behavior pending device validation; general MMIO open |
 | x18, native stack/TLS/signals, instruction cache | Phase0.2 adds six boundary witnesses; limited witness controls pass under VIXL | Six boundary witnesses pass on Pocket S; internal calls/signals/TLS/cache contracts remain partial |
 | 4 KiB guest / 16 KiB host mapping semantics | Known assumptions identified; fail explicitly | Unsupported in phase0.1 |
 | Xbox CPU policy | IA-32 forced; CPUID and instruction restrictions not complete | Open |

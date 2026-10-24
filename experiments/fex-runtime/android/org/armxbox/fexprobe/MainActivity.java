@@ -18,7 +18,7 @@ public final class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(24, 48, 24, 24);
         TextView title = new TextView(this);
-        title.setText("ARMXBOX FEX Probe • phase0.3\nCPU diagnostics only • no game support\n");
+        title.setText("ARMXBOX FEX Probe • phase0.4\nCPU diagnostics only • no game support\n");
         layout.addView(title);
         TextView output = new TextView(this);
         output.setTextIsSelectable(true);
