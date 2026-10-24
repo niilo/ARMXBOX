@@ -2,6 +2,8 @@
 """Fetch immutable dependencies and apply the reviewed Android/IA-32 patches."""
 import argparse
 import json
+import os
+import tempfile
 from pathlib import Path
 import subprocess
 
@@ -32,23 +34,28 @@ def main():
             raise SystemExit(f'{path}: expected {pin}, got {actual}')
         if run('git', '-C', str(checkout / path), 'status', '--porcelain', capture_output=True).stdout:
             raise SystemExit(f'{path}: modified dependency checkout')
-    patches = [ROOT / 'patches/0001-bionic-getdents.diff', ROOT / 'patches/0002-ia32-divide-errors.diff']
-    for patch in patches:
-        reverse = subprocess.run(['git', '-C', str(checkout), 'apply', '--reverse', '--check', str(patch)],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if reverse.returncode:
-            run('git', '-C', str(checkout), 'apply', '--check', str(patch))
-            run('git', '-C', str(checkout), 'apply', str(patch))
-    # Git orders a whole-tree diff by path; independent patches may be listed in
-    # a different order. Compare exact per-file diff blocks, including extra edits.
-    def normalized(diff):
-        blocks = diff.split('diff --git ')
-        if blocks[0].strip():
-            raise SystemExit('Unexpected patch preamble')
-        return sorted('diff --git ' + block for block in blocks[1:])
-    expected = ''.join(p.read_text() for p in patches)
+    patches = [ROOT / 'patches/0001-bionic-getdents.diff', ROOT / 'patches/0002-ia32-divide-errors.diff',
+               ROOT / 'patches/0003-precise-memory-fault-state.diff']
+    # Compose overlapping patches in an isolated index. Recognize exact reviewed
+    # prefixes so repeat preparation never relies on reversing an older patch
+    # whose context has legitimately been changed by a later patch.
+    prefixes = ['']
+    with tempfile.TemporaryDirectory(prefix='armxbox-fex-index-') as temporary:
+        env = dict(os.environ, GIT_INDEX_FILE=str(Path(temporary) / 'index'))
+        run('git', '-C', str(checkout), 'read-tree', 'HEAD', env=env)
+        for patch in patches:
+            run('git', '-C', str(checkout), 'apply', '--cached',
+                '--whitespace=error', str(patch), env=env)
+            prefixes.append(run('git', '-C', str(checkout), 'diff', '--cached',
+                                capture_output=True, env=env).stdout)
     actual = run('git', '-C', str(checkout), 'diff', capture_output=True).stdout
-    if normalized(actual) != normalized(expected):
+    if actual not in prefixes:
+        raise SystemExit('Dependency diff differs from reviewed portability/CPU patches')
+    for patch in patches[prefixes.index(actual):]:
+        run('git', '-C', str(checkout), 'apply', '--check', str(patch))
+        run('git', '-C', str(checkout), 'apply', str(patch))
+    actual = run('git', '-C', str(checkout), 'diff', capture_output=True).stdout
+    if actual != prefixes[-1]:
         raise SystemExit('Dependency diff differs from reviewed portability/CPU patches')
     run('git', '-C', str(checkout), 'diff', '--check')
     print(f'FEX {LOCK["commit"]}; dependency pins and portability diff verified')

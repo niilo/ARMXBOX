@@ -9,18 +9,14 @@ in the [user-supplied proposal](proposal.md). The RC16 and RC17 optimization
 experiments are paused and preserved on their existing branches. Their
 unvalidated runtime changes are not part of this starting point.
 
-**Status: Phase 0 implementation underway.** [Phase0.4](phase04.md) adds
-scoped native memory-fault and word-MMIO probes; device validation is pending. [Phase0.3](phase03.md) fixes
-IA-32 divide errors with hardware-checked arithmetic matrices. [Phase0.2](phase02.md) adds
-controlled generated-exception exits and native ABI witnesses; the
-[Pocket S report](phase02-android-report.md) passes all 21 checks. The pinned FEXCore builds and links
-for Android ARM64, and the isolated CPU diagnostic passes all ten checks both
-in the cloud simulator and in the [user Android report](phase0-android-report.md).
-Basic native Android execution on 4 KiB pages is demonstrated. A separate probe
-APK and CI workflow are implemented. Remaining fault/ABI/memory gates and
-performance remain unverified;
-broad HLE has not started. See [findings and gates](phase0-findings.md) and the
-[probe build/run instructions](../../../experiments/fex-runtime/README.md).
+**Status: Phase 0 implementation underway.** The [Phase0.4 Pocket S report](phase04-android-report.md)
+passes all 39 inherited CPU/division/ABI checks, but fails ten raw-fault/MMIO
+checks. [Phase0.4.1](phase041.md) corrects cloud-reproduced guest-PC metadata and
+pre-access flags defects; corrected native validation is pending. The original
+[Phase0.2 report](phase02-android-report.md) passes all 21 checks. Basic native
+Android execution on 4 KiB pages and the divide increment are demonstrated;
+general memory-fault recovery and broad HLE remain open. See the
+[remaining embedding gates](next-gates.md) and [build/run instructions](../../../experiments/fex-runtime/README.md).
 
 ## Objective and constraints
 

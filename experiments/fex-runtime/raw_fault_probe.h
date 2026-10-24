@@ -10,7 +10,7 @@ struct InternalThreadState;
 namespace armxbox {
 struct RawFaultResults {
     std::array<bool, 11> passed{};
-    char detail[256]{};
+    char detail[2048]{};
 };
 RawFaultResults runRawFaultProbe(FEXCore::Context::Context *,
                                  FEXCore::Core::InternalThreadState *,

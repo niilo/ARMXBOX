@@ -304,11 +304,21 @@ RawFaultResults runRawFaultProbe(FEXCore::Context::Context *context,
                 (4U | (unmapped ? 0U : 1U) | (write ? 2U : 0U));
         result.passed[which * 2] = trapped;
         if (!trapped) {
-            snprintf(result.detail, sizeof result.detail,
-                     "raw case=%u seen=%u kind=%u PC=%llx expected=%llx", which,
-                     seen, unsigned(owner.event.kind),
-                     (unsigned long long)state.rip,
-                     (unsigned long long)(code + 8));
+            const auto used = strlen(result.detail);
+            snprintf(
+                result.detail + used, sizeof result.detail - used,
+                "raw case=%u seen=%u kind=%u statePC=%llx eventPC=%llx "
+                "expected=%llx eax=%llx ebx=%llx flags=%x code=%d trap=%u "
+                "err=%u; ",
+                which, seen, unsigned(owner.event.kind),
+                (unsigned long long)state.rip,
+                (unsigned long long)owner.event.pc,
+                (unsigned long long)(code + 8),
+                (unsigned long long)state.gregs[0],
+                (unsigned long long)state.gregs[3],
+                context->ReconstructCompactedEFLAGS(thread, false, nullptr, 0),
+                owner.event.code, unsigned(exception.TrapNo),
+                unsigned(exception.err_code));
             continue;
         }
         // Typed mock bus service runs outside the signal handler. Only this
@@ -399,6 +409,19 @@ RawFaultResults runRawFaultProbe(FEXCore::Context::Context *context,
                 (context->ReconstructCompactedEFLAGS(thread, false, nullptr,
                                                      0) &
                  0x8d5) == 0x55;
+            if (!result.passed[8 + sign]) {
+                const auto used = strlen(result.detail);
+                snprintf(result.detail + used, sizeof result.detail - used,
+                         "div sign=%u seen=%u kind=%u statePC=%llx "
+                         "eventPC=%llx flags=%x trap=%u err=%u; ",
+                         sign, owner.pending.load(), unsigned(owner.event.kind),
+                         (unsigned long long)state.rip,
+                         (unsigned long long)owner.event.pc,
+                         context->ReconstructCompactedEFLAGS(thread, false,
+                                                             nullptr, 0),
+                         unsigned(exception.TrapNo),
+                         unsigned(exception.err_code));
+            }
         }
     } else if (remapped != MAP_FAILED) {
         munmap(remapped, 4096);

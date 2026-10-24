@@ -1,3 +1,7 @@
+> Device follow-up: all 39 inherited CPU/division/ABI checks pass in the
+> [cumulative Phase0.4 Pocket S report](phase04-android-report.md). Its new raw
+> recovery checks fail separately; no title performance is measured.
+
 # Phase 0.3: precise IA-32 divide errors
 
 Phase0.2 passed 21 checks on the Pocket S. Phase0.3 addresses the independently

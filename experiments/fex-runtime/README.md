@@ -44,7 +44,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.4-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.4.1-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -55,9 +55,10 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is phase0.4; see [raw-fault/MMIO scope and checks](../../docs/devel/fex-hle/phase04.md).
-It retains the phase0.3 divide fix and adds eleven scoped native memory checks,
-for 50 expected native PASS lines. The new signal-path checks need the device run.
+The current build is phase0.4.1; see [the correction and regressions](../../docs/devel/fex-hle/phase041.md).
+The phase0.4 report passes the divide/ABI increment but fails raw recovery.
+This build fixes reproduced PC/flag defects and expects 56 native PASS lines;
+the corrected signal path still needs the device run.
 
 A 16 KiB host reports unsupported before FEX initialization. ELF/APK 16 KiB
 alignment is packaging compatibility only; it does not prove runtime page support.
@@ -80,9 +81,9 @@ Linux thunk or a completed production callback ABI. SSE2 here exercises engine
 state; the final Xbox CPUID/instruction policy remains to be implemented.
 
 Basic direct Android ARM64 execution on 4 KiB pages is now demonstrated.
-Phase0.2 passes all 21 checks on Pocket S. Phase0.3 adds cloud-validated divide
-errors and arithmetic matrices. Phase0.4 adds scoped raw memory-fault/MMIO exits;
-both increments still need the device run. Remaining gates include general memory
+Phase0.2 passes all 21 checks on Pocket S. The Phase0.4 report passes all 39
+inherited CPU/division/ABI checks but fails raw recovery. Phase0.4.1 corrects
+reproduced PC/flag defects; the corrected raw-fault increment needs the device run. Remaining gates include general memory
 semantics, internal ABI/TLS/signal/cache contracts and complete typed bridges.
 Broad XBE/kernel, graphics and audio HLE must wait for those gates. Keep original
 backend comparisons separate from CPU fixture results.

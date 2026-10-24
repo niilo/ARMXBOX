@@ -109,7 +109,8 @@ memory-fault and MMIO recovery are not supplied by these stop handlers.
 DIV/IDIV errors. Its 133,400 generated-code cases pass in two translation modes;
 the reference passes 31,296 native x86 hardware cases. A conditional backend exit
 keeps memory divisors single-read and the valid path to one native divide.
-The Pocket S report for this new behavior is pending. Raw memory/MMIO recovery
+All 39 inherited CPU/division/ABI checks pass in the
+[Phase0.4 Pocket S report](phase04-android-report.md). Raw memory/MMIO recovery
 and the other full-runtime gates remain open.
 
 ## Phase0.4 follow-up
@@ -118,9 +119,16 @@ and the other full-runtime gates remain open.
 word-MMIO service/resume fixtures. Host validation covers 54 ownership, decoding
 and at-most-once transaction checks; seven decoding cases also match observed
 ARM load/store effects under VIXL. The cumulative native probe expects 50 PASS
-lines. Android signal delivery, ucontext recovery and registration restoration
-remain pending the device report. General MMIO and full-runtime memory semantics
+lines. The device report later passes handler restoration but fails the ten
+raw-state/MMIO checks; corrected ucontext recovery remains unaccepted. General MMIO and full-runtime memory semantics
 are still open; this scoped diagnostic is not a production fault handler.
+
+## Phase0.4 device correction
+
+The [device report](phase04-android-report.md) passes 40 checks and fails ten
+raw-fault/MMIO checks. [Phase0.4.1](phase041.md) reproduces and corrects missing
+moffs PC metadata and pre-access flag state in cloud tests. Corrected native
+recovery remains pending; full Phase 0 is not accepted.
 
 ## Acceptance and next autonomous work
 
@@ -132,7 +140,7 @@ are still open; this scoped diagnostic is not a production fault handler.
 | CPU/bridge/alias/invalidation fixtures | 10 passing checks under VIXL and in the user Android report | Passed for constructed fixtures |
 | Actual Android ARM64 execution | User report: native ARM64 process, 4096-byte pages, all ten checks pass | Basic execution passed |
 | Full typed bridge and state contract | Current controlled stdcall and reverse-call subset only | Partial |
-| Fault recovery, MMIO and guest-PC recovery | Generated exceptions pass on Pocket S; phase0.4 scoped raw-fault/MMIO adapter compiles and passes host policy controls | New raw-fault/MMIO and divide behavior pending device validation; general MMIO open |
+| Fault recovery, MMIO and guest-PC recovery | Generated exceptions pass on Pocket S; phase0.4 scoped raw-fault/MMIO adapter compiles and passes host policy controls | Divide increment passes on Pocket S; raw-fault/MMIO checks fail in phase0.4 and await corrected device validation; general MMIO open |
 | x18, native stack/TLS/signals, instruction cache | Phase0.2 adds six boundary witnesses; limited witness controls pass under VIXL | Six boundary witnesses pass on Pocket S; internal calls/signals/TLS/cache contracts remain partial |
 | 4 KiB guest / 16 KiB host mapping semantics | Known assumptions identified; fail explicitly | Unsupported in phase0.1 |
 | Xbox CPU policy | IA-32 forced; CPUID and instruction restrictions not complete | Open |

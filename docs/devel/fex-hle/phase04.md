@@ -1,5 +1,8 @@
 # Phase 0.4: controlled native memory faults and word MMIO
 
+**Device outcome:** [40 PASS, 10 FAIL](phase04-android-report.md). Raw recovery
+is not accepted; see [the corrective probe](phase041.md).
+
 This cumulative probe retains the phase0.3 divide fix and adds protected/unmapped
 memory tests to the Android ARM64 app. It does not run games. Host policy tests
 and successful compilation are not proof of Android signal delivery/recovery;
