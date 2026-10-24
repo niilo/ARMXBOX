@@ -382,13 +382,32 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
       report.check(label,aliasFailures==0);
     }
     using Run = decltype(execute);
-    const auto metadata=armxbox::runPCMetadataProbe(context.get(),thread,Code,Data,[](void* run){(*static_cast<Run*>(run))();},&execute);
-    const char* metadataLabels[]={"moffs load has exact fault-PC metadata","moffs store has exact fault-PC metadata","ModRM load has exact fault-PC metadata","ModRM store has exact fault-PC metadata","DIV memory has exact fault-PC metadata","IDIV memory has exact fault-PC metadata"};
-    for(unsigned i=0;i<metadata.passed.size();++i) report.check(metadataLabels[i],metadata.passed[i]);
+    const auto metadata = armxbox::runPCMetadataProbe(
+        context.get(), thread, Code, Data,
+        [](void *run) { (*static_cast<Run *>(run))(); }, &execute);
+    const char *metadataLabels[] = {
+        "moffs load has exact fault-PC metadata",
+        "moffs store has exact fault-PC metadata",
+        "ModRM load has exact fault-PC metadata",
+        "ModRM store has exact fault-PC metadata",
+        "DIV memory has exact fault-PC metadata",
+        "IDIV memory has exact fault-PC metadata"
+    };
+    for (unsigned i = 0; i < metadata.passed.size(); ++i) {
+        report.check(metadataLabels[i], metadata.passed[i]);
+    }
 #ifdef VIXL_SIMULATOR
-    for(unsigned i=0;i<metadata.flags.size();++i) { char label[100]; snprintf(label,sizeof label,"simulated native memory access %u preserves pre-fault flags",i); report.check(label,metadata.flags[i]); }
+    for (unsigned i = 0; i < metadata.flags.size(); ++i) {
+        char label[100];
+        snprintf(label, sizeof label,
+                 "simulated native memory access %u preserves pre-fault flags",
+                 i);
+        report.check(label, metadata.flags[i]);
+    }
 #endif
-    if(metadata.detail[0]) report.line("PC metadata detail: %s\n",metadata.detail);
+    if (metadata.detail[0]) {
+        report.line("PC metadata detail: %s\n", metadata.detail);
+    }
 #ifdef __ANDROID__
     const auto raw=armxbox::runRawFaultProbe(context.get(),thread,Code,Code+RegionSize-4096,[](void* run){(*static_cast<Run*>(run))();},&execute);
     const char* rawLabels[]={"raw protected read: exact guest PC/registers/flags","typed MMIO read: one service and resume","raw protected write: exact guest PC/registers/flags","typed MMIO write: one service and resume","raw unmapped read: exact guest PC/registers/flags","typed unmapped MMIO read: service and resume","raw unmapped write: exact guest PC/registers/flags","typed unmapped MMIO write: service and resume","DIV memory fault precedes arithmetic error","IDIV memory fault precedes arithmetic error","original SIGSEGV registration restored"};
