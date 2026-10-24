@@ -35,7 +35,8 @@ def main():
         if run('git', '-C', str(checkout / path), 'status', '--porcelain', capture_output=True).stdout:
             raise SystemExit(f'{path}: modified dependency checkout')
     patches = [ROOT / 'patches/0001-bionic-getdents.diff', ROOT / 'patches/0002-ia32-divide-errors.diff',
-               ROOT / 'patches/0003-precise-memory-fault-state.diff']
+               ROOT / 'patches/0003-precise-memory-fault-state.diff',
+               ROOT / 'patches/0004-bounded-host-arena.diff']
     # Compose overlapping patches in an isolated index. Recognize exact reviewed
     # prefixes so repeat preparation never relies on reversing an older patch
     # whose context has legitimately been changed by a later patch.

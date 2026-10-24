@@ -44,7 +44,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.4.1-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.5-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -55,10 +55,11 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is phase0.4.1; see [the correction and regressions](../../docs/devel/fex-hle/phase041.md).
-The phase0.4 report passes the divide/ABI increment but fails raw recovery.
-This build fixes reproduced PC/flag defects and expects 56 native PASS lines;
-the corrected signal path still needs the device run.
+The current build is phase0.5; see [bounded allocation and coexistence](../../docs/devel/fex-hle/phase05.md).
+Phase0.4.1 passes all 56 checks on Pocket S. This cumulative build adds 19 host
+allocator checks for 75 expected native PASS lines. Its bounded arena reserves
+2 GiB of virtual capacity; this is not a physical-memory commitment. Native
+Android coexistence validation is pending.
 
 A 16 KiB host reports unsupported before FEX initialization. ELF/APK 16 KiB
 alignment is packaging compatibility only; it does not prove runtime page support.
@@ -80,10 +81,9 @@ exit-based prototype using HLT stubs and nested `ExecuteThread`, not an upstream
 Linux thunk or a completed production callback ABI. SSE2 here exercises engine
 state; the final Xbox CPUID/instruction policy remains to be implemented.
 
-Basic direct Android ARM64 execution on 4 KiB pages is now demonstrated.
-Phase0.2 passes all 21 checks on Pocket S. The Phase0.4 report passes all 39
-inherited CPU/division/ABI checks but fails raw recovery. Phase0.4.1 corrects
-reproduced PC/flag defects; the corrected raw-fault increment needs the device run. Remaining gates include general memory
-semantics, internal ABI/TLS/signal/cache contracts and complete typed bridges.
-Broad XBE/kernel, graphics and audio HLE must wait for those gates. Keep original
-backend comparisons separate from CPU fixture results.
+Basic direct Android ARM64 execution on 4 KiB pages is demonstrated. Phase0.4.1
+passes all 56 CPU/division/metadata/raw-fault/word-MMIO/ABI checks on Pocket S.
+Phase0.5 adds bounded allocation and coexistence; its new behavior needs the device
+run. Full bridge/memory, internal signal/TLS/cache, CPU policy, bounded execution
+and 16 KiB contracts remain open before broad XBE/kernel, graphics or audio HLE.
+Keep title performance comparisons separate from diagnostic fixture results.

@@ -63,6 +63,5 @@ raw case, including event/state PC, flags, registers and trap/error metadata,
 instead of overwriting all detail with the last case.
 
 Install the separate FEX Probe app, run fixtures and share its report. The
-reported native failures are not considered fixed until the corrected Android
-run passes; cloud metadata/flag observations cannot prove kernel ucontext
-recovery. Broad HLE remains gated on the other [embedding contracts](next-gates.md).
+[corrected Android report](phase041-android-report.md) now passes all 56 checks;
+cloud metadata/flag observations alone were not proof of kernel ucontext recovery. Broad HLE remains gated on the other [embedding contracts](next-gates.md).

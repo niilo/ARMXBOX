@@ -73,9 +73,18 @@ target_link_libraries(armxbox_fex_link_probe PRIVATE
   -Wl,--whole-archive FEXCore FEXCore_Base -Wl,--no-whole-archive JemallocLibs)
 target_link_options(armxbox_fex_link_probe PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384)
 
-add_library(armxbox_fex_diagnostic SHARED diagnostic.cpp pc_metadata_probe.cpp)
+# Loaded after allocator setup, rather than linked into the diagnostic, to
+# exercise an actual fresh host-library mapping.
+add_library(armxbox_host_mapping_probe SHARED host_mapping_probe.c)
+target_link_options(armxbox_host_mapping_probe PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384)
+find_package(Threads REQUIRED)
+add_library(armxbox_fex_diagnostic SHARED diagnostic.cpp pc_metadata_probe.cpp host_arena_probe.cpp)
+add_dependencies(armxbox_fex_diagnostic armxbox_host_mapping_probe)
+if(NOT ANDROID)
+  set_target_properties(armxbox_fex_diagnostic PROPERTIES BUILD_RPATH "$ORIGIN")
+endif()
 target_include_directories(armxbox_fex_diagnostic PRIVATE "${FEX_SOURCE_DIR}/FEXCore/Source")
-target_link_libraries(armxbox_fex_diagnostic PRIVATE FEXCore FEXCore_Base JemallocLibs)
+target_link_libraries(armxbox_fex_diagnostic PRIVATE FEXCore FEXCore_Base JemallocLibs Threads::Threads ${CMAKE_DL_LIBS})
 target_compile_options(armxbox_fex_diagnostic PRIVATE -fno-exceptions)
 target_link_options(armxbox_fex_diagnostic PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384)
 if(ANDROID)

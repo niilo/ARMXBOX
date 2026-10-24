@@ -130,6 +130,14 @@ raw-fault/MMIO checks. [Phase0.4.1](phase041.md) reproduces and corrects missing
 moffs PC metadata and pre-access flag state in cloud tests. The [corrected native report](phase041-android-report.md) passes all 56 checks;
 the scoped increment is accepted, while full Phase 0 remains open.
 
+## Phase0.5 bounded allocator
+
+[Phase0.5](phase05.md) replaces whole-high-VA reservation in the diagnostic with
+one owned 2 GiB virtual arena, reusing the upstream region allocator. Nineteen
+new coexistence/ownership checks pass in the cloud alongside all earlier suites;
+the cumulative native probe expects 75 checks and still needs a device report.
+This does not establish general engine OOM recovery or full runtime memory gates.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |

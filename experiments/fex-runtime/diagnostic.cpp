@@ -1,6 +1,7 @@
 #include "diagnostic.h"
 #include "division_cases.h"
 #include "pc_metadata_probe.h"
+#include "host_arena_probe.h"
 #ifdef __ANDROID__
 #include "raw_fault_probe.h"
 #endif
@@ -76,7 +77,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.4.1; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.5; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -97,7 +98,50 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   LogMan::Throw::InstallHandler([](const char* text) { diagnosticLog(text); });
   LogMan::Msg::InstallHandler([](LogMan::DebugLevels, const char* text) { diagnosticLog(text); });
   diagnosticLog("FEX probe: allocator setup");
-  FEXCore::Allocator::SetupHooks(page);
+  auto memorySnapshot = [&](const char *stage) {
+    const auto memory = armxbox::hostMemorySnapshot();
+    if (memory.available) {
+      report.line("Process memory %s: virtual=%zu KiB RSS=%zu KiB\n",
+                  stage, memory.virtualKiB, memory.residentKiB);
+    } else {
+      report.line("Process memory %s: unavailable\n", stage);
+    }
+  };
+  memorySnapshot("before arena");
+  const auto arena = armxbox::prepareHostArena(Code);
+  memorySnapshot("after arena/host controls");
+  const char *arenaLabels[] = {
+    "arena rejects incompatible host pages without changing hooks",
+    "arena rejects undersized reservation without changing hooks",
+    "arena rejects unaligned reservation without changing hooks",
+    "arena rejects overflow reservation without changing hooks",
+    "bounded high-VA arena initializes",
+    "bounded arena refuses repeated initialization",
+    "pre-existing host mapping remains intact",
+    "host mappings survive concurrent allocator initialization",
+    "ordinary host malloc coexists with bounded arena",
+    "ordinary host mmap coexists with bounded arena",
+    "host threads and concurrent bounded mappings coexist",
+    "fresh host library maps and executes after initialization",
+    "bounded mapping supports partial free and exact reuse",
+    "host hooks reject fixed mapping and unmap outside owned arena",
+    "host hooks reject low guest mapping and unmap",
+    "bounded arena rejects exhaustion and invalid lengths",
+    "bounded file mapping shares backing with ordinary host mapping"
+  };
+  static_assert(std::size(arenaLabels) == armxbox::ArenaCheckCount);
+  for (unsigned i = 0; i < arena.passed.size(); ++i) {
+    report.check(arenaLabels[i], arena.passed[i]);
+  }
+  report.line("Host arena: base=%llx reserved=%zu bytes (virtual capacity, not RSS)\n",
+              (unsigned long long)arena.base, arena.size);
+  if (arena.detail[0]) {
+    report.line("Arena detail: %s\n", arena.detail);
+  }
+  if (!arena.ready) {
+    munmap(mapping, RegionSize);
+    return 1;
+  }
   diagnosticLog("FEX probe: config setup");
   FEXCore::Config::Initialize();
   FEXCore::Config::Load();
@@ -430,6 +474,10 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     context->DestroyThread(thread);
     FEXCore::Allocator::munmap(shadow, ShadowSize + 2 * page);
   }
+  const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
+  report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
+  report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);
+  memorySnapshot("after CPU fixtures");
   FEXCore::Config::Shutdown();
   // Process-owned allocator remains alive; never unmap live global FEX objects.
   munmap(mapping, RegionSize);

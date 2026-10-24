@@ -7,6 +7,10 @@ remaining contracts below.
 
 ## Bounded host allocator
 
+[Phase0.5](phase05.md) implements the first bounded-arena increment and cloud
+checks below. Native Android acceptance and the stated full-runtime limits
+remain open; the source audit here explains the original requirement.
+
 The current `SetupHooks(page)` path in FEX's `FEXCore/Source/Utils/Allocator.cpp`
 constructs `OSAllocator_64Bit`. Its constructor in
 `Utils/Allocator/64BitAllocator.cpp` calls `StealMemoryRegion` from 4 GiB through
