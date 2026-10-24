@@ -50,6 +50,7 @@ def main():
     actual = run('git', '-C', str(checkout), 'diff', capture_output=True).stdout
     if normalized(actual) != normalized(expected):
         raise SystemExit('Dependency diff differs from reviewed portability/CPU patches')
+    run('git', '-C', str(checkout), 'diff', '--check')
     print(f'FEX {LOCK["commit"]}; dependency pins and portability diff verified')
 
 if __name__ == '__main__':

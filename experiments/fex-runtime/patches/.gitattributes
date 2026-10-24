@@ -1,0 +1,3 @@
+# Unified diffs require single-space context markers on blank source lines.
+# Validate source whitespace after application in scripts/prepare.py.
+*.diff -whitespace
