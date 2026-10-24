@@ -44,7 +44,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.6-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.7-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -55,14 +55,15 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.6/code7**, adding a
-[reference-backed Xbox CPU identity](../../docs/devel/fex-hle/phase06.md).
-Phase0.5 passes all 75 checks on Pocket S. The new cumulative native probe expects
-**88 PASS lines**: those 75 plus 12 identity checks and one native ABI summary
-across 111 additional guest entries. The
-[Pocket S report](../../docs/devel/fex-hle/phase06-android-report.md) passes all
-88 checks and accepts this scoped native increment. Instruction restrictions and virtual privilege remain open; CPUID
-identity alone does not admit arbitrary Xbox code.
+The current build is **phase0.7/code8**, adding
+[precise privileged exits and canonical EFLAGS](../../docs/devel/fex-hle/phase07.md).
+The [Phase0.6 Pocket S report](../../docs/devel/fex-hle/phase06-android-report.md)
+passes all 88 checks. The new cumulative native probe expects **109 PASS lines**:
+those 88 plus 19 precise-exit checks, one canonical-EFLAGS check and one native
+ABI summary across 152 new guest entries. It also tests 256 EFLAGS API round
+trips. Native acceptance of this increment is pending. Controlled rejection is
+not virtual privilege; instruction admission, virtual interrupts/timers and
+bounded execution remain open.
 
 The bounded arena reserves 2 GiB of virtual capacity, not physical memory.
 [Phase0.5's Pocket S report](../../docs/devel/fex-hle/phase05-android-report.md)

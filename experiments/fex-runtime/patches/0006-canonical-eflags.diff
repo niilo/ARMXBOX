@@ -1,0 +1,16 @@
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+index 38b26ff31..eb1bb9788 100644
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -191,8 +191,9 @@ uint32_t ContextImpl::ReconstructCompactedEFLAGS(FEXCore::Core::InternalThreadSt
+   const auto Frame = Thread->CurrentFrame;
+   uint32_t EFLAGS {};
+ 
+-  // Currently these flags just map 1:1 inside of the resulting value.
+-  for (size_t i = 0; i < FEXCore::Core::CPUState::NUM_EFLAG_BITS; ++i) {
++  // Only architectural bits through ID map into EFLAGS. Slots 24..27 hold
++  // private packed NZCV, and the other high slots are reserved, not flags.
++  for (size_t i = 0; i <= X86State::RFLAG_ID_LOC; ++i) {
+     switch (i) {
+     case X86State::RFLAG_CF_RAW_LOC:
+     case X86State::RFLAG_PF_RAW_LOC:

@@ -16,7 +16,9 @@ are retained as regression evidence. [Phase0.5](phase05.md) adds a bounded host 
 and host coexistence checks; the [Pocket S report](phase05-android-report.md)
 passes all 75 native checks. Full bridge/memory,
 [Phase0.6](phase06.md) adds reference-backed CPUID identity; the
-[Pocket S report](phase06-android-report.md) passes all 88 native checks. Instruction/privilege policy and bounded execution remain open.
+[Pocket S report](phase06-android-report.md) passes all 88 native checks. [Phase0.7](phase07.md) adds precise privileged-exit checks and fixes reserved
+high bits in EFLAGS reconstruction; its native increment is pending.
+Instruction/privilege policy and bounded execution remain open.
 Broad HLE has not started. See the
 [remaining embedding gates](next-gates.md) and [build/run instructions](../../../experiments/fex-runtime/README.md).
 

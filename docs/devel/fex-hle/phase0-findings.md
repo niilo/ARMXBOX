@@ -148,6 +148,15 @@ modes; the [Pocket S report](phase06-android-report.md) passes all 88 native che
 Instruction admission,
 virtual privilege and bounded return remain open; no title performance is measured.
 
+## Phase0.7 privileged exits and canonical flags
+
+[Phase0.7](phase07.md) fixes private NZCV/reserved high bits leaking through the
+public EFLAGS reconstruction API. It adds 256 independent API round trips and
+19 controlled privileged-exit cases with arithmetic and warm-cache variants
+(152 new guest entries), inaccessible I/O operands and following sentinels.
+The cumulative cloud suite expects 96 checks and native probe 109. This is
+precise rejection, not Xbox ring-0 virtualization or complete ISA admission.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |

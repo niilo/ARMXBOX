@@ -76,7 +76,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.6; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.7; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -488,6 +488,15 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
                identity.nativeEntries == 111 && identity.abiMask == 0x3f);
 #endif
   if (identity.detail[0]) report.line("CPU identity detail: %s\n", identity.detail);
+  for (unsigned i = 0; i < identity.privileged.passed.size(); ++i) {
+    report.check(armxbox::privilegedExitLabel(i), identity.privileged.passed[i]);
+  }
+#ifdef __aarch64__
+  report.check("privileged exit entries preserve all six native ABI witnesses",
+               identity.privileged.entries == 152 && identity.privileged.abiMask == 0x3f);
+#endif
+  report.check("compacted EFLAGS excludes private NZCV and reserved high bits", identity.privileged.canonicalFlags);
+  if (identity.privileged.detail[0]) report.line("Privileged exit detail: %s\n", identity.privileged.detail);
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
   report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);

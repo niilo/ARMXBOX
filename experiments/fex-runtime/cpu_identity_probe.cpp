@@ -156,6 +156,10 @@ CPUIdentityResults runCPUIdentityProbe(const FEXCore::HostFeatures &features,
                 result.passed[8] &= run(test, true) == test.result;
             }
         }
+        if (xbox) {
+            result.privileged = runPrivilegedExitProbe(context.get(), thread, code,
+                                                      data, stack, code + 0xe000);
+        }
         const auto expected = words(context->RunCPUIDFunction(0, 0));
         const CPUIDCase first{ 0, 0, expected };
         result.passed[10] &= run(first, false) == expected;

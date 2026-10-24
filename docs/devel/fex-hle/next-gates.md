@@ -65,6 +65,10 @@ bit does not prevent execution of its associated instructions. Add explicit
 unsupported-instruction tests and preserve fault PC/state rather than silently
 accepting unknown opcodes.
 
+[Phase0.7](phase07.md) exercises a scoped controlled-exit matrix and fixes
+nonarchitectural high bits in reconstructed EFLAGS. Its native acceptance is
+pending. Those checks do not implement virtual privilege.
+
 Pinned FEX's dispatcher routes CLI/STI and control-register accesses to its
 permission-restricted path, appropriate to its original userspace model.
 An Xbox application runtime needs an explicit virtual privilege/interrupt policy

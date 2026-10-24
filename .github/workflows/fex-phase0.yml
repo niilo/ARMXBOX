@@ -98,9 +98,9 @@ jobs:
         run: bash experiments/fex-runtime/scripts/package-apk.sh "$RUNNER_TEMP/fex-android" "$RUNNER_TEMP/fex-apk"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: armxbox-fex-phase0.6-debug
+          name: armxbox-fex-phase0.7-debug
           path: |
-            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.6-debug.apk
+            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.7-debug.apk
             ${{ runner.temp }}/fex-apk/assets/THIRD_PARTY_NOTICES
           if-no-files-found: error
           retention-days: 30

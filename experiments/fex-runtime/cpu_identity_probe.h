@@ -1,4 +1,5 @@
 #pragma once
+#include "privileged_exit_probe.h"
 #include <array>
 #include <cstdint>
 namespace FEXCore {
@@ -13,6 +14,7 @@ struct CPUIdentityResults {
     uint64_t abiMask = 0x3f;
     unsigned nativeEntries = 0;
     char detail[256]{};
+    PrivilegedExitResults privileged;
 };
 CPUIdentityResults runCPUIdentityProbe(const FEXCore::HostFeatures &,
                                        FEXCore::HLE::SyscallHandler *,
