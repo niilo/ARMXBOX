@@ -144,3 +144,18 @@ diff --git a/FEXCore/include/FEXCore/Utils/AllocatorHooks.h b/FEXCore/include/FE
  #else
  using VirtualNamePtr = void (*)(const char*, const void*, size_t);
  using VirtualTHPPtr = void (*)(const void*, size_t, THPControl);
+diff --git a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+--- a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
++++ b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+@@ -125,7 +125,10 @@
+       // This ensures unused pages are zero, while not having the backing pages consuming memory.
+       auto* MemoryAsBytes = reinterpret_cast<uint8_t*>(Region->UsedPages.Memory);
+       const auto TrackingRegionSize = Region->SlabInfo->RegionSize - ManagedSize;
+-      ::madvise(MemoryAsBytes + ManagedSize, TrackingRegionSize, MADV_DONTNEED);
++      // UsedPages begins one header page after Region. Adding ManagedSize to
++      // it would discard one page beyond this owned mapping and corrupt a
++      // neighbouring host allocation. The discard extent is relative to Region.
++      ::madvise(reinterpret_cast<uint8_t*>(Region) + ManagedSize, TrackingRegionSize, MADV_DONTNEED);
+ 
+       // Use madvise to claim WILLNEED on the beginning pages for initial state tracking.
+       // Improves performance of the following MemClear by not doing a page level fault dance for data necessary to track >170TB of used pages.

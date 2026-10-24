@@ -91,6 +91,8 @@ if(ANDROID)
   target_sources(armxbox_fex_diagnostic PRIVATE jni.cpp abi_witness.S raw_fault_probe.cpp)
   target_link_libraries(armxbox_fex_diagnostic PRIVATE log)
 else()
+  target_sources(armxbox_fex_diagnostic PRIVATE host_arena_audit.cpp)
+  target_link_options(armxbox_fex_diagnostic PRIVATE -Wl,--wrap=mmap -Wl,--wrap=madvise)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/abi_witness.bin"
     COMMAND "${CMAKE_C_COMPILER}" --target=aarch64-linux-gnu -c

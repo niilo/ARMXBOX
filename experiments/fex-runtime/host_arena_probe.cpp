@@ -14,6 +14,9 @@
 #include <unistd.h>
 
 namespace armxbox {
+#ifdef VIXL_SIMULATOR
+bool hostArenaAuditOK();
+#endif
 namespace {
 constexpr size_t Page = 4096;
 constexpr uintptr_t GuestEnd = 1ULL << 32;
@@ -64,8 +67,11 @@ bool boundedMapping(uintptr_t base, size_t size)
         return false;
     }
     memset(p, 0x74, Page);
+    // Force an actual access rather than allowing the known memset value to
+    // replace every read in this allocation/coexistence check.
     const bool good =
-        contained(reinterpret_cast<uintptr_t>(p), Page, base, size);
+        contained(reinterpret_cast<uintptr_t>(p), Page, base, size) &&
+        static_cast<volatile unsigned char *>(p)[Page - 1] == 0x74;
     return FEXCore::Allocator::munmap(p, Page) == 0 && good;
 }
 struct Churn {
@@ -364,13 +370,20 @@ HostArenaResults prepareHostArena(uintptr_t guestCode,
     result.passed[15] = rejectedSizes(result.size);
     stage("host arena: shared file control");
     result.passed[16] = fileAlias(result.base, result.size);
+#ifdef VIXL_SIMULATOR
+    result.passed[4] &= hostArenaAuditOK();
+#endif
     stage("host arena: setup controls finished");
     return result;
 }
 std::array<bool, 2> finishHostArena(uintptr_t base, size_t size)
 {
-    return { normalAllocation(base, size) && normalMapping(base, size) &&
-                 hostWorkers(base, size),
-             rejectedSizes(size) && boundedMapping(base, size) };
+    const bool host = normalAllocation(base, size) &&
+                      normalMapping(base, size) && hostWorkers(base, size);
+    bool bounded = rejectedSizes(size) && boundedMapping(base, size);
+#ifdef VIXL_SIMULATOR
+    bounded &= hostArenaAuditOK();
+#endif
+    return { host, bounded };
 }
 } // namespace armxbox

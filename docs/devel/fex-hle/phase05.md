@@ -42,6 +42,17 @@ the bounded reservation. The cap bounds the new hooked mapping arena, not every
 allocation ever made by the process. Reported VmSize/RSS snapshots are process
 totals; they are not measurements of FEX alone or of title performance.
 
+The first independent CI run also exposed an upstream region-initialization
+boundary bug. `UsedPages` begins one header page after the region base, but the
+original MADV_DONTNEED range used that pointer with a length measured from the
+region base. Its end extended **4096 bytes beyond the reservation**, potentially
+discarding a neighbouring host mapping. The patch measures the discard start
+from the region base. A host-only OS-call audit deterministically fails the old
+implementation, rejects its unsafe discard rather than corrupting another
+mapping, and passes the corrected source. The audit is also checked after CPU
+execution. Repeated isolated processes and failure-stage/backtrace artifacts
+cover initialization and process-exit behavior in CI.
+
 ## New checks
 
 Seventeen setup/ownership/coexistence checks and two post-CPU checks exercise:
