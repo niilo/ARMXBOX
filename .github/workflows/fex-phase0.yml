@@ -1,0 +1,81 @@
+name: FEX Phase 0 diagnostic
+on:
+  push:
+    branches: ['experiment/fex-hle-runtime']
+    paths: ['experiments/fex-runtime/**', '.github/workflows/fex-phase0.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cpu-fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Prepare pinned engine
+        run: python3 experiments/fex-runtime/scripts/prepare.py "$RUNNER_TEMP/FEX"
+      - name: Configure host simulator
+        run: >-
+          cmake -S experiments/fex-runtime -B "$RUNNER_TEMP/fex-host" -G Ninja
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release -DARMXBOX_HOST_SIMULATOR=ON
+          -DFEX_SOURCE_DIR="$RUNNER_TEMP/FEX"
+      - name: Build and run generated ARM64 fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest armxbox_abi_witness_test armxbox_division_native_test armxbox_fault_policy_test -j 2
+          timeout 30s "$RUNNER_TEMP/fex-host/armxbox_abi_witness_test" "$RUNNER_TEMP/fex-host/abi_witness.bin" | tee "$RUNNER_TEMP/fex-abi-witness.txt"
+          timeout 30s "$RUNNER_TEMP/fex-host/armxbox_fault_policy_test" | tee "$RUNNER_TEMP/fex-fault-policy.txt"
+          timeout 30s "$RUNNER_TEMP/fex-host/armxbox_division_native_test" | tee "$RUNNER_TEMP/fex-division-native.txt"
+          ARMXBOX_PROBE_SINGLE_BLOCK=1 timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" | tee "$RUNNER_TEMP/fex-fixtures-single.txt"
+          timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" | tee "$RUNNER_TEMP/fex-fixtures.txt"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: fex-phase0-host-report
+          path: |
+            ${{ runner.temp }}/fex-fixtures.txt
+            ${{ runner.temp }}/fex-abi-witness.txt
+            ${{ runner.temp }}/fex-division-native.txt
+            ${{ runner.temp }}/fex-fixtures-single.txt
+            ${{ runner.temp }}/fex-fault-policy.txt
+          if-no-files-found: ignore
+  android-diagnostic:
+    needs: cpu-fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.1.0 ndk;30.0.15729638'
+      - name: Prepare pinned engine
+        run: python3 experiments/fex-runtime/scripts/prepare.py "$RUNNER_TEMP/FEX"
+      - name: Compile and link the full Android core
+        run: |
+          cmake -S experiments/fex-runtime -B "$RUNNER_TEMP/fex-android" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/30.0.15729638/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
+            -DCMAKE_BUILD_TYPE=Release -DFEX_SOURCE_DIR="$RUNNER_TEMP/FEX"
+          cmake --build "$RUNNER_TEMP/fex-android" --target armxbox_fex_link_probe armxbox_fex_diagnostic -j 2
+      - name: Package isolated diagnostic APK
+        env:
+          FEX_SOURCE_DIR: ${{ runner.temp }}/FEX
+        run: bash experiments/fex-runtime/scripts/package-apk.sh "$RUNNER_TEMP/fex-android" "$RUNNER_TEMP/fex-apk"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: armxbox-fex-phase0.4.1-debug
+          path: |
+            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.4.1-debug.apk
+            ${{ runner.temp }}/fex-apk/assets/THIRD_PARTY_NOTICES
+          if-no-files-found: error
+          retention-days: 30

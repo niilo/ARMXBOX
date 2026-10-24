@@ -1,0 +1,18 @@
+diff --git a/FEXCore/Source/Utils/FileUtils.cpp b/FEXCore/Source/Utils/FileUtils.cpp
+index d3e62cacd..01016b120 100644
+--- a/FEXCore/Source/Utils/FileUtils.cpp
++++ b/FEXCore/Source/Utils/FileUtils.cpp
+@@ -9,6 +9,13 @@
+ #include <dirent.h>
+ #include <fcntl.h>
+ #include <unistd.h>
++#ifdef __ANDROID__
++#include <sys/syscall.h>
++// Bionic does not export the glibc getdents64 wrapper.
++static ssize_t getdents64(int fd, void* buffer, size_t size) {
++  return syscall(SYS_getdents64, fd, buffer, size);
++}
++#endif
+ #else
+ #include <windows.h>
+ #include <winnt.h>

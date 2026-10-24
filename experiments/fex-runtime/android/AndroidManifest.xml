@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.armxbox.fexprobe" android:versionCode="5" android:versionName="phase0.4.1">
+  <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36" />
+  <uses-feature android:glEsVersion="0x00020000" android:required="false" />
+  <application android:label="ARMXBOX FEX Probe" android:debuggable="true" android:allowBackup="false" android:extractNativeLibs="true" android:theme="@android:style/Theme.Material.NoActionBar">
+    <activity android:name=".MainActivity" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+    </activity>
+  </application>
+</manifest>
