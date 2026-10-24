@@ -2,8 +2,8 @@
 
 The [Phase0.4.1 Pocket S report](phase041-android-report.md) passes all 56 native
 checks. This cumulative increment switches the diagnostic to a bounded host
-allocator and retains those CPU, exception, memory and ABI checks. Its Android
-coexistence behavior is pending a new device report; it still does not run games.
+allocator and retains those CPU, exception, memory and ABI checks. The [Phase0.5 Pocket S report](phase05-android-report.md) now passes all 75
+native checks, accepting scoped Android coexistence. It still does not run games.
 
 ## Ownership and setup
 
@@ -85,9 +85,9 @@ APK identity/signature, ARM64 ELF, 16 KiB APK/ELF alignment and system-library
 closure are checked. Patch preparation recognizes exact reviewed prefixes and
 rejects an extra source edit while preserving the actual Git index.
 
-Native Phase0.5/code6 expects **75 PASS lines**: the 56 accepted Phase0.4.1 checks
-plus 19 allocator checks. Run CPU fixtures and share the report. Linux host
-coexistence does not establish Bionic/ART behavior; successful fixture mappings
-also do not prove arbitrary future guest memory layouts or guest concurrency.
+The [native Phase0.5/code6 report](phase05-android-report.md) passes **75 checks**:
+the 56 accepted Phase0.4.1 checks plus 19 allocator checks. This demonstrates
+scoped Bionic/ART coexistence on the tested Pocket S. Successful fixture mappings
+do not prove arbitrary future guest memory layouts or guest concurrency.
 Full bridge/memory semantics, Xbox CPU policy, bounded execution and 16 KiB hosts
 remain open before broad XBE/kernel/graphics/audio HLE. No FPS gain is inferred.

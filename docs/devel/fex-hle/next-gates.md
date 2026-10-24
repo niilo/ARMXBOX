@@ -8,8 +8,9 @@ remaining contracts below.
 ## Bounded host allocator
 
 [Phase0.5](phase05.md) implements the first bounded-arena increment and cloud
-checks below. Native Android acceptance and the stated full-runtime limits
-remain open; the source audit here explains the original requirement.
+checks below. The [Pocket S report](phase05-android-report.md) passes all 75
+native checks and accepts scoped coexistence; the stated full-runtime limits
+remain open. The source audit here explains the original requirement.
 
 The current `SetupHooks(page)` path in FEX's `FEXCore/Source/Utils/Allocator.cpp`
 constructs `OSAllocator_64Bit`. Its constructor in
@@ -54,7 +55,9 @@ other later features, some depending on host capabilities. IA-32 mode alone does
 not reproduce the Xbox CPU contract. The diagnostic's SSE2 fixture intentionally
 checks engine state and is not a statement that the Xbox supports SSE2.
 
-Implement a deterministic Xbox CPUID profile, including supported leaves,
+The [next CPU-policy plan](phase06-plan.md) records source findings and a
+staged validation sequence. Implement a deterministic Xbox CPUID profile,
+including supported leaves,
 vendor/signature, cache information and stable topology. Validate it against the
 reference backend. Separately decide instruction availability: masking a CPUID
 bit does not prevent execution of its associated instructions. Add explicit

@@ -59,7 +59,9 @@ The current build is phase0.5; see [bounded allocation and coexistence](../../do
 Phase0.4.1 passes all 56 checks on Pocket S. This cumulative build adds 19 host
 allocator checks for 75 expected native PASS lines. Its bounded arena reserves
 2 GiB of virtual capacity; this is not a physical-memory commitment. Native
-Android coexistence validation is pending.
+Android coexistence passes the scoped checks in the
+[Pocket S report](../../docs/devel/fex-hle/phase05-android-report.md); general
+engine OOM recovery, library unload and arbitrary guest layouts remain open.
 
 A 16 KiB host reports unsupported before FEX initialization. ELF/APK 16 KiB
 alignment is packaging compatibility only; it does not prove runtime page support.

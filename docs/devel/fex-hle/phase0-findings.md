@@ -135,7 +135,7 @@ the scoped increment is accepted, while full Phase 0 remains open.
 [Phase0.5](phase05.md) replaces whole-high-VA reservation in the diagnostic with
 one owned 2 GiB virtual arena, reusing the upstream region allocator. Nineteen
 new coexistence/ownership checks pass in the cloud alongside all earlier suites;
-the cumulative native probe expects 75 checks and still needs a device report.
+the [Pocket S report](phase05-android-report.md) passes all 75 native checks.
 This does not establish general engine OOM recovery or full runtime memory gates.
 
 ## Acceptance and next autonomous work
@@ -151,6 +151,7 @@ This does not establish general engine OOM recovery or full runtime memory gates
 | Fault recovery, MMIO and guest-PC recovery | Generated exceptions pass on Pocket S; phase0.4 scoped raw-fault/MMIO adapter compiles and passes host policy controls | Phase0.4.1 passes all 56 checks on Pocket S; scoped raw-fault/word-MMIO accepted, general MMIO open |
 | x18, native stack/TLS/signals, instruction cache | Phase0.2 adds six boundary witnesses; limited witness controls pass under VIXL | Six boundary witnesses pass on Pocket S; internal calls/signals/TLS/cache contracts remain partial |
 | 4 KiB guest / 16 KiB host mapping semantics | Known assumptions identified; fail explicitly | Unsupported in phase0.1 |
+| Bounded host allocation/coexistence | Phase0.5 Pocket S: all 19 new checks pass; 3,688 KiB process RSS increase across fixtures | Scoped increment accepted; engine OOM/unload/16 KiB remain open |
 | Xbox CPU policy | IA-32 forced; CPUID and instruction restrictions not complete | Open |
 | Performance versus reference | No title runs on experimental backend | Unmeasured |
 

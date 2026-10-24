@@ -13,7 +13,8 @@ unvalidated runtime changes are not part of this starting point.
 passes all 56 native checks, including the corrected PC/flag recovery and scoped
 word-MMIO service/resume. The previous [Phase0.4 failures](phase04-android-report.md)
 are retained as regression evidence. [Phase0.5](phase05.md) adds a bounded host allocator
-and host coexistence checks; native acceptance is pending. Full bridge/memory,
+and host coexistence checks; the [Pocket S report](phase05-android-report.md)
+passes all 75 native checks. Full bridge/memory,
 CPU policy and bounded execution also remain open. Broad HLE has not started. See the
 [remaining embedding gates](next-gates.md) and [build/run instructions](../../../experiments/fex-runtime/README.md).
 
