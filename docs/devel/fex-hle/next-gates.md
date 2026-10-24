@@ -1,8 +1,9 @@
 # Remaining CPU embedding gates
 
 These are findings from the pinned engine and the reference backend, not
-implemented features or performance results. Phase0.4's Android signal recovery
-must first be accepted from a native device report; broad HLE remains gated.
+implemented features or performance results. The [Phase0.4.1 native report](phase041-android-report.md)
+accepts the scoped fault/word-MMIO increment. Broad HLE remains gated by the
+remaining contracts below.
 
 ## Bounded host allocator
 

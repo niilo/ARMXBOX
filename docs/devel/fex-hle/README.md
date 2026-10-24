@@ -9,13 +9,12 @@ in the [user-supplied proposal](proposal.md). The RC16 and RC17 optimization
 experiments are paused and preserved on their existing branches. Their
 unvalidated runtime changes are not part of this starting point.
 
-**Status: Phase 0 implementation underway.** The [Phase0.4 Pocket S report](phase04-android-report.md)
-passes all 39 inherited CPU/division/ABI checks, but fails ten raw-fault/MMIO
-checks. [Phase0.4.1](phase041.md) corrects cloud-reproduced guest-PC metadata and
-pre-access flags defects; corrected native validation is pending. The original
-[Phase0.2 report](phase02-android-report.md) passes all 21 checks. Basic native
-Android execution on 4 KiB pages and the divide increment are demonstrated;
-general memory-fault recovery and broad HLE remain open. See the
+**Status: Phase 0 implementation underway.** The [Phase0.4.1 Pocket S report](phase041-android-report.md)
+passes all 56 native checks, including the corrected PC/flag recovery and scoped
+word-MMIO service/resume. The previous [Phase0.4 failures](phase04-android-report.md)
+are retained as regression evidence. The next gate is a bounded host allocator
+that coexists with ordinary Android mappings; full bridge/memory, CPU policy and
+bounded execution also remain open. Broad HLE has not started. See the
 [remaining embedding gates](next-gates.md) and [build/run instructions](../../../experiments/fex-runtime/README.md).
 
 ## Objective and constraints

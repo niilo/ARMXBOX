@@ -1,3 +1,7 @@
+> Native follow-up: the [Pocket S report](phase041-android-report.md) passes all
+> 56 checks. This accepts the scoped increment; remaining full-runtime gates and
+> title performance are still open.
+
 # Phase 0.4.1: precise memory-fault state
 
 The [phase0.4 Pocket S report](phase04-android-report.md) passes all 39 inherited
