@@ -1,7 +1,8 @@
 # Next increment: deterministic Xbox CPU policy
 
-This is an implementation plan and source audit, not an implemented CPU profile
-or a new APK. The [Phase0.5 Pocket S report](phase05-android-report.md) accepts
+[Phase0.6](phase06.md) implements the CPUID-identity portion of this plan; its
+new Android checks are pending device acceptance. Instruction admission and
+privilege behavior below are not yet implemented. The [Phase0.5 Pocket S report](phase05-android-report.md) accepts
 the bounded allocator increment. CPU policy can now advance independently of
 further device input. Full memory/bridge and bounded-execution gates remain open.
 
@@ -22,6 +23,8 @@ to the maximum basic leaf by `cpu_x86_cpuid`; an unsupported leaf is not simply
 an all-zero result. Preserve this behavior, including high and extended inputs,
 instead of introducing modern topology or host-dependent information.
 
+The [executed reference capture](../../../experiments/fex-runtime/reference/README.md)
+now confirms leaf-1 EDX `0383fbfd` and the hypervisor-leaf zero exceptions.
 The declared `PENTIUM3_FEATURES` mask is subject to model expansion and
 `x86_cpu_filter_features`. Capture the **realized Xbox machine's outputs** before
 freezing a feature golden; a copied model declaration is not a runtime oracle.

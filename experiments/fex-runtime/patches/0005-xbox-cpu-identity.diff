@@ -1,0 +1,161 @@
+diff --git a/FEXCore/Source/Interface/Context/Context.cpp b/FEXCore/Source/Interface/Context/Context.cpp
+index 7e0aafa87..c2a01c54b 100644
+--- a/FEXCore/Source/Interface/Context/Context.cpp
++++ b/FEXCore/Source/Interface/Context/Context.cpp
+@@ -15,8 +15,18 @@
+ #include "FEXCore/Debug/InternalThreadState.h"
+ 
+ namespace FEXCore::Context {
+-fextl::unique_ptr<FEXCore::Context::Context> FEXCore::Context::Context::CreateNewContext(const FEXCore::HostFeatures& Features) {
+-  return fextl::make_unique<FEXCore::Context::ContextImpl>(Features);
++fextl::unique_ptr<FEXCore::Context::Context> FEXCore::Context::Context::CreateNewContext(
++  const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity) {
++  if (Identity != FEXCore::CPUID::IdentityProfile::Default && Identity != FEXCore::CPUID::IdentityProfile::XboxReference) {
++    return {};
++  }
++  if (Identity == FEXCore::CPUID::IdentityProfile::XboxReference &&
++      (FEXCore::Config::Get_IS64BIT_MODE() || FEXCore::Config::Get_DISKCACHE() ||
++       FEXCore::Config::Get_ENABLECODECACHINGWIP() || FEXCore::Config::Get_ENABLECODECACHEVALIDATION())) {
++    // Cached code has no identity-profile key yet. Do not reuse a different ISA identity.
++    return {};
++  }
++  return fextl::make_unique<FEXCore::Context::ContextImpl>(Features, Identity);
+ }
+ 
+ void FEXCore::Context::ContextImpl::CompileRIP(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP) {
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+index 9f427da20..b7f677a65 100644
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -383,6 +383,8 @@ public:
+   uint32_t StrictSplitLockMutex {};
+ 
+   FEXCore::HostFeatures HostFeatures;
++  // Fixed before CPUID, translation and code-cache construction. No setter.
++  const FEXCore::CPUID::IdentityProfile CPUIdentity;
+   // CPUID depends on HostFeatures so needs to be initialized after that.
+   FEXCore::CPUIDEmu CPUID;
+   FEXCore::HLE::SyscallHandler* SyscallHandler {};
+@@ -395,7 +397,7 @@ public:
+ 
+   SignalDelegator* SignalDelegation {};
+ 
+-  ContextImpl(const FEXCore::HostFeatures& Features);
++  ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity);
+ 
+   static void ThreadRemoveCodeEntryFromJit(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP);
+ 
+diff --git a/FEXCore/Source/Interface/Core/CPUID.cpp b/FEXCore/Source/Interface/Core/CPUID.cpp
+index b4d125d15..a50f16920 100644
+--- a/FEXCore/Source/Interface/Core/CPUID.cpp
++++ b/FEXCore/Source/Interface/Core/CPUID.cpp
+@@ -1385,6 +1385,7 @@ FEXCore::CPUID::XCRResults CPUIDEmu::XCRFunction_0h() const {
+ 
+ CPUIDEmu::CPUIDEmu(const FEXCore::Context::ContextImpl* ctx)
+   : CTX {ctx}
++  , XboxIdentity {CTX->CPUIdentity == FEXCore::CPUID::IdentityProfile::XboxReference}
+   , SupportsCPUIndexInTPIDRRO {CTX->HostFeatures.SupportsCPUIndexInTPIDRRO != 0}
+   , GetCPUID {GetCPUID_Syscall} {
+   Cores = CTX->HostFeatures.CPUMIDRs.size();
+diff --git a/FEXCore/Source/Interface/Core/CPUID.h b/FEXCore/Source/Interface/Core/CPUID.h
+index f7f32571b..916424647 100644
+--- a/FEXCore/Source/Interface/Core/CPUID.h
++++ b/FEXCore/Source/Interface/Core/CPUID.h
+@@ -37,6 +37,20 @@ public:
+   constexpr static uint64_t CACHELINE_SIZE = 64;
+ 
+   FEXCore::CPUID::FunctionResults RunFunction(uint32_t Function, uint32_t Leaf) const {
++    if (XboxIdentity) {
++      // Observed on the realized ARMXBOX Xbox/Pentium III CPU, not host CPUID.
++      if (Function == 0) {
++        return {2, 0x756e6547, 0x6c65746e, 0x49656e69};
++      }
++      if (Function == 1) {
++        return {0x0000068a, 0, 0, 0x0383fbfd};
++      }
++      if (Function == 0x40000000 || Function == 0x40000001) {
++        return {};
++      }
++      // Includes extended inputs: reference xlevel is zero. Ignore subleaf.
++      return {0x03020101, 0, 0, 0x0c040841};
++    }
+     if (Function < Primary.size()) {
+       const auto Handler = Primary[Function];
+       return (this->*Handler)(Leaf);
+@@ -58,6 +72,9 @@ public:
+   }
+ 
+   FEXCore::CPUID::FunctionResults RunFunctionName(uint32_t Function, uint32_t Leaf, uint32_t CPU) const {
++    if (XboxIdentity) {
++      return RunFunction(Function, Leaf);
++    }
+     if (Function == 0x8000'0002U) {
+       return Function_8000_0002h(Leaf, CPU % PerCPUData.size());
+     } else if (Function == 0x8000'0003U) {
+@@ -115,6 +132,7 @@ public:
+ 
+ private:
+   const FEXCore::Context::ContextImpl* CTX;
++  const bool XboxIdentity;
+   [[maybe_unused]] bool SupportsCPUIndexInTPIDRRO {};
+   bool Hybrid {};
+   uint32_t Cores {};
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+index b5a171680..38b26ff31 100644
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -79,8 +79,9 @@ $end_info$
+ #include <xxhash.h>
+ 
+ namespace FEXCore::Context {
+-ContextImpl::ContextImpl(const FEXCore::HostFeatures& Features)
++ContextImpl::ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity)
+   : HostFeatures {Features}
++  , CPUIdentity {Identity}
+   , CPUID {this}
+   , CodeCache {*this} {
+   if (!Config.Is64BitMode()) {
+@@ -353,6 +354,11 @@ void ContextImpl::SetFlagsFromCompactedEFLAGS(FEXCore::Core::InternalThreadState
+ }
+ 
+ bool ContextImpl::InitCore() {
++  if (CPUIdentity == FEXCore::CPUID::IdentityProfile::XboxReference &&
++      (Config.Is64BitMode() || FEXCore::Config::Get_DISKCACHE() || CodeCache.IsGeneratingCache ||
++       FEXCore::Config::Get_ENABLECODECACHINGWIP() || FEXCore::Config::Get_ENABLECODECACHEVALIDATION())) {
++    return false;
++  }
+   if (CodeCache.IsGeneratingCache || FEXCore::Config::Get_ENABLECODECACHINGWIP()) {
+     // Start with a larger code buffer to avoid resizes that would discard code
+     StartMaximalCodeBuffer();
+diff --git a/FEXCore/include/FEXCore/Core/CPUID.h b/FEXCore/include/FEXCore/Core/CPUID.h
+index 0e3c77f73..64b83178e 100644
+--- a/FEXCore/include/FEXCore/Core/CPUID.h
++++ b/FEXCore/include/FEXCore/Core/CPUID.h
+@@ -3,6 +3,12 @@
+ #include <cstdint>
+ 
+ namespace FEXCore::CPUID {
++// Identity only: instruction admission and virtual privilege remain frontend gates.
++enum class IdentityProfile : uint8_t {
++  Default,
++  XboxReference,
++};
++
+ struct FunctionResults {
+   uint32_t eax, ebx, ecx, edx;
+ };
+diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Core/Context.h
+index 8aa448e2e..4fd7499df 100644
+--- a/FEXCore/include/FEXCore/Core/Context.h
++++ b/FEXCore/include/FEXCore/Core/Context.h
+@@ -56,7 +56,9 @@ public:
+    *
+    * @return a new context object
+    */
+-  FEX_DEFAULT_VISIBILITY static fextl::unique_ptr<FEXCore::Context::Context> CreateNewContext(const FEXCore::HostFeatures& Features);
++  FEX_DEFAULT_VISIBILITY static fextl::unique_ptr<FEXCore::Context::Context> CreateNewContext(
++    const FEXCore::HostFeatures& Features,
++    FEXCore::CPUID::IdentityProfile Identity = FEXCore::CPUID::IdentityProfile::Default);
+ 
+   /**
+    * @brief Allows setting up in memory code and other things prior to launchign code execution

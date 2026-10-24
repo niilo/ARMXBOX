@@ -44,7 +44,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.5-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.6-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -55,13 +55,18 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is phase0.5; see [bounded allocation and coexistence](../../docs/devel/fex-hle/phase05.md).
-Phase0.4.1 passes all 56 checks on Pocket S. This cumulative build adds 19 host
-allocator checks for 75 expected native PASS lines. Its bounded arena reserves
-2 GiB of virtual capacity; this is not a physical-memory commitment. Native
-Android coexistence passes the scoped checks in the
-[Pocket S report](../../docs/devel/fex-hle/phase05-android-report.md); general
-engine OOM recovery, library unload and arbitrary guest layouts remain open.
+The current build is **phase0.6/code7**, adding a
+[reference-backed Xbox CPU identity](../../docs/devel/fex-hle/phase06.md).
+Phase0.5 passes all 75 checks on Pocket S. The new cumulative native probe expects
+**88 PASS lines**: those 75 plus 12 identity checks and one native ABI summary
+across 111 additional guest entries. Native acceptance of this increment is
+pending. Instruction restrictions and virtual privilege remain open; CPUID
+identity alone does not admit arbitrary Xbox code.
+
+The bounded arena reserves 2 GiB of virtual capacity, not physical memory.
+[Phase0.5's Pocket S report](../../docs/devel/fex-hle/phase05-android-report.md)
+accepts scoped allocator/coexistence behavior. General engine OOM recovery,
+library unload and arbitrary guest layouts remain open.
 
 A 16 KiB host reports unsupported before FEX initialization. ELF/APK 16 KiB
 alignment is packaging compatibility only; it does not prove runtime page support.

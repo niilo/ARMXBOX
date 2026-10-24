@@ -1,4 +1,6 @@
 #include "diagnostic.h"
+#include "execution_boundary.h"
+#include "cpu_identity_probe.h"
 #include "division_cases.h"
 #include "pc_metadata_probe.h"
 #include "host_arena_probe.h"
@@ -31,9 +33,6 @@
 #include <android/log.h>
 #endif
 
-#ifdef __aarch64__
-extern "C" void armxbox_probe_execute_abi(void*, void*, void (*)(void*, void*), uint64_t*);
-#endif
 namespace {
 constexpr uintptr_t Code = 0x10000000, Data = Code + 0x4000, Stack = Code + 0x8000;
 constexpr size_t RegionSize = 0x10000;
@@ -77,7 +76,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.5; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.6; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -178,19 +177,9 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     pointers.GuestSignal_SIGSEGV = pointers.ThreadStopHandlerSpillSRA;
     std::array<bool, 6> abiOK{true, true, true, true, true, true};
     auto execute = [&] {
+      const auto mask = armxbox::executeGuest(context.get(), thread);
 #ifdef __aarch64__
-      uint64_t checks[6]{};
-      armxbox_probe_execute_abi(context.get(), thread, [](void* ctx, void* cpu) {
-        // FEX's dispatcher preserves GPR/SIMD callee-saved state, but leaves
-        // host FPCR/FPSR ownership to its frontend. Scope guest FP state here.
-        uint64_t hostFPCR, hostFPSR;
-        asm volatile("mrs %0, fpcr\n mrs %1, fpsr" : "=r"(hostFPCR), "=r"(hostFPSR) :: "memory");
-        static_cast<FEXCore::Context::Context*>(ctx)->ExecuteThread(static_cast<FEXCore::Core::InternalThreadState*>(cpu));
-        asm volatile("msr fpcr, %0\n msr fpsr, %1" :: "r"(hostFPCR), "r"(hostFPSR) : "memory");
-      }, checks);
-      for (size_t i = 0; i < abiOK.size(); ++i) abiOK[i] = abiOK[i] && checks[i];
-#else
-      context->ExecuteThread(thread);
+      for (size_t i = 0; i < abiOK.size(); ++i) abiOK[i] = abiOK[i] && ((mask >> i) & 1);
 #endif
     };
     FEXCore::Core::CPUState::gdt_segment gdt[32]{};
@@ -474,6 +463,31 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     context->DestroyThread(thread);
     FEXCore::Allocator::munmap(shadow, ShadowSize + 2 * page);
   }
+  diagnosticLog("FEX probe: Xbox CPU identity");
+  const auto identity = armxbox::runCPUIdentityProbe(features, &calls, Code, Data, Stack);
+  const char *identityLabels[] = {
+    "CPU identity rejects unknown profile",
+    "Xbox identity rejects 64-bit guest mode",
+    "Xbox identity rejects shared disk cache",
+    "Xbox identity rejects experimental code cache",
+    "Xbox identity rejects code-cache validation",
+    "Xbox CPUID API matches 54 reference cases twice",
+    "Xbox CPUID name API is independent of host CPU number",
+    "generated immediate CPUID matches 54 reference cases",
+    "generated dynamic CPUID matches 54 reference cases",
+    "CPUID preserves flags and unrelated GPRs at exact HLT exit",
+    "default Xbox default contexts isolate identical guest addresses",
+    "default FEX CPU identity retains modern engine capabilities"
+  };
+  static_assert(std::size(identityLabels) == std::size(identity.passed));
+  for (unsigned i = 0; i < identity.passed.size(); ++i) {
+    report.check(identityLabels[i], identity.passed[i]);
+  }
+#ifdef __aarch64__
+  report.check("CPU identity guest entries preserve all six native ABI witnesses",
+               identity.nativeEntries == 111 && identity.abiMask == 0x3f);
+#endif
+  if (identity.detail[0]) report.line("CPU identity detail: %s\n", identity.detail);
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
   report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);

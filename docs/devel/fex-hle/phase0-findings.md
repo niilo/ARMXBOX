@@ -138,6 +138,15 @@ new coexistence/ownership checks pass in the cloud alongside all earlier suites;
 the [Pocket S report](phase05-android-report.md) passes all 75 native checks.
 This does not establish general engine OOM recovery or full runtime memory gates.
 
+## Phase0.6 CPU identity
+
+[Phase0.6](phase06.md) adds an immutable per-context Xbox CPUID identity backed
+by executed reference captures, including realized feature filtering and
+unsupported-leaf behavior. Public/name queries and immediate/dynamic generated
+CPUID match the 54-case golden. All 76 cloud checks pass in both translation
+modes; the cumulative native increment expects 88 checks. Instruction admission,
+virtual privilege and bounded return remain open; no title performance is measured.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |
@@ -152,7 +161,7 @@ This does not establish general engine OOM recovery or full runtime memory gates
 | x18, native stack/TLS/signals, instruction cache | Phase0.2 adds six boundary witnesses; limited witness controls pass under VIXL | Six boundary witnesses pass on Pocket S; internal calls/signals/TLS/cache contracts remain partial |
 | 4 KiB guest / 16 KiB host mapping semantics | Known assumptions identified; fail explicitly | Unsupported in phase0.1 |
 | Bounded host allocation/coexistence | Phase0.5 Pocket S: all 19 new checks pass; 3,688 KiB process RSS increase across fixtures | Scoped increment accepted; engine OOM/unload/16 KiB remain open |
-| Xbox CPU policy | IA-32 forced; CPUID and instruction restrictions not complete | Open |
+| Xbox CPU policy | Phase0.6 CPUID identity matches executed reference; native increment pending | Instruction admission and privilege policy open |
 | Performance versus reference | No title runs on experimental backend | Unmeasured |
 
 Finish the remaining Phase 0 runtime contracts before advancing to controlled
