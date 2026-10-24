@@ -5,6 +5,13 @@ fixtures and the same FEX/dependency pins, adding controlled generated-exception
 exits and explicit native ABI witnesses. It remains a separate game-free app.
 No game support, title speedup or completed Phase 0 gate is claimed.
 
+## Device result
+
+The [Pocket S report](phase02-android-report.md) passes all **21 checks** on
+Android 13/API 33 with 4 KiB host pages. This demonstrates the generated-exception
+and six native boundary cases on that device, including FPSR restoration. The
+remaining full Phase 0 contracts and performance are not established by this run.
+
 ## Runtime changes
 
 - Bind the pinned thread's generated SIGILL/SIGTRAP/SIGSEGV dispatcher pointers
@@ -49,10 +56,9 @@ The build extractor accepts only relocation-free AArch64 ELF64 text from our
 compiler output. These controls are distinct from executing Android/FEX itself.
 
 The pinned VIXL does not implement FPSR MRS/MSR. The control test therefore does
-not score the FPSR result and reports that missing model explicitly. Actual
-native FPSR preservation remains a device check. GPR/vector/control witnesses
-against the real engine also remain device checks, despite compilation and
-witness-control coverage.
+not score the FPSR result and reports that missing model explicitly. The subsequent user device report passes FPSR and the GPR/vector/control
+witnesses against the native engine. The cloud control coverage alone did not
+establish those results.
 
 Cloud validation: 15 FEX/VIXL fixture checks; five witness controls; Android ARM64
 full-object engine link and diagnostic compile; separate APK packaging,
@@ -71,7 +77,8 @@ This increment handles engine-generated architectural exceptions only. An
 unmapped/protected guest load/store still faults in the Android process; it is
 not handled by rebinding generated-exception pointers. Raw memory-fault recovery,
 guest-PC reconstruction for such faults, MMIO exits, 16 KiB host pages, the full
-bridge/memory contract and Xbox CPUID/privilege policy remain open. The pinned
-DIV/IDIV paths also need a dedicated exception-fidelity audit; do not infer that
-UD2/INT3/GP coverage establishes divide-error behavior. No broad HLE work should
+bridge/memory contract and Xbox CPUID/privilege policy remain open. A separate host-only audit confirmed that unsigned DIV by zero and quotient
+overflow continue to the following HLT instead of raising #DE in the pinned
+engine. Correct divide-error behavior, including signed IDIV coverage, remains
+an explicit follow-up blocker; the 21 checks do not exercise those cases. No broad HLE work should
 start on the strength of these limited checks alone.
