@@ -1,4 +1,6 @@
 #include "diagnostic.h"
+#include "division_cases.h"
+#include <cstdlib>
 #include <FEXCore/Config/Config.h>
 #include <FEXCore/Core/Context.h>
 #include <FEXCore/Core/HostFeatures.h>
@@ -70,7 +72,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.2; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.3; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -96,6 +98,9 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   FEXCore::Config::Initialize();
   FEXCore::Config::Load();
   FEXCore::Config::Set(FEXCore::Config::CONFIG_IS64BIT_MODE, "0");
+  const bool singleBlock = std::getenv("ARMXBOX_PROBE_SINGLE_BLOCK") != nullptr;
+  FEXCore::Config::Set(FEXCore::Config::CONFIG_MULTIBLOCK, singleBlock ? "0" : "1");
+  report.line("Translation: %s\n", singleBlock ? "single-block" : "multiblock");
 #ifdef VIXL_SIMULATOR
   FEXCore::Config::Set(FEXCore::Config::CONFIG_DISABLE_VIXL_INDIRECT_RUNTIME_CALLS, "0");
 #endif
@@ -281,6 +286,97 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     state.rip = Code;
     execute();
     report.check("explicit code invalidation observes modified instruction", state.gregs[0] == 42);
+    for (unsigned bits : {8U,16U,32U}) for (bool signedDivide : {false,true}) {
+      context->ClearCodeCache(thread);
+      const unsigned char code[] = {0x66, static_cast<unsigned char>(bits == 8 ? 0xf6 : 0xf7), static_cast<unsigned char>(signedDivide ? 0xf9 : 0xf1), 0xf4};
+      const unsigned skip = bits == 16 ? 0 : 1;
+      memcpy(mapping, code + skip, sizeof code - skip);
+      const unsigned length = 3 - skip;
+      unsigned total = 0, failures = 0, faultCases = 0, validCases = 0;
+      armxbox::division::cases(bits, [&](armxbox::division::Input input) {
+        const auto expected = armxbox::division::reference(input, bits, signedDivide);
+        state.gregs[0] = input.eax; state.gregs[2] = input.edx; state.gregs[1] = input.ecx;
+        context->SetFlagsFromCompactedEFLAGS(thread, 0xed7);
+        const uint32_t flags = context->ReconstructCompactedEFLAGS(thread, false, nullptr, 0);
+        state.rip = Code;
+        execute();
+        bool ok = expected.fault ? isExit(SIGFPE, 0, Code) : isExit(SIGSEGV, 13, Code + length);
+        ok &= state.gregs[0] == expected.eax && state.gregs[2] == expected.edx;
+        ok &= static_cast<uint32_t>(state.gregs[1]) == input.ecx;
+        if (expected.fault) {
+          ++faultCases;
+          ok &= context->ReconstructCompactedEFLAGS(thread, false, nullptr, 0) == flags;
+          ok &= thread->CurrentFrame->SynchronousFaultData.si_code == FPE_INTDIV;
+        } else ++validCases;
+        ++total;
+        if (!ok && ++failures <= 3) report.line("DIV mismatch bits=%u signed=%u eax=%08x edx=%08x ecx=%08x expected_fault=%u actual_pc=%llx actual_eax=%08x actual_edx=%08x\n", bits, signedDivide, input.eax,input.edx,input.ecx,expected.fault,(unsigned long long)state.rip,(uint32_t)state.gregs[0],(uint32_t)state.gregs[2]);
+      });
+      // Exercise deferred flags from a real guest ADD, then repair only the
+      // divisor and resume at the faulting DIV/IDIV without replaying the ADD.
+      context->ClearCodeCache(thread);
+      const unsigned char prefix[] = {0xbb,0xff,0xff,0xff,0xff,0x83,0xc3,1};
+      memcpy(mapping, prefix, sizeof prefix);
+      memcpy(static_cast<char*>(mapping) + sizeof prefix, code + skip, length);
+      const unsigned char afterDivide[]={0xb8,99,0,0,0,0xba,88,0,0,0,0xbb,77,0,0,0,0x83,0xc3,1,0xf4};
+      memcpy(static_cast<char*>(mapping)+sizeof prefix+length,afterDivide,sizeof afterDivide);
+      state.gregs[0]=17; state.gregs[2]=0; state.gregs[1]=0;
+      context->SetFlagsFromCompactedEFLAGS(thread, 2);
+      state.rip=Code;
+      execute();
+      bool deferred = isExit(SIGFPE, 0, Code + sizeof prefix) && state.gregs[0]==17 && state.gregs[2]==0 && state.gregs[3]==0;
+      deferred &= (context->ReconstructCompactedEFLAGS(thread, false, nullptr, 0) & 0x8d5) == 0x55;
+      failures += !deferred; ++total; ++faultCases;
+      state.gregs[1]=5;
+      // The faulting PC is retained; the adapter does not skip the instruction.
+      execute();
+      bool resumed = isExit(SIGSEGV,13,Code + sizeof prefix + length + sizeof afterDivide - 1);
+      resumed &= state.gregs[0]==99 && state.gregs[2]==88 && state.gregs[3]==78;
+      resumed &= (context->ReconstructCompactedEFLAGS(thread,false,nullptr,0) & 0x8d5)==4;
+      failures += !resumed; ++total; ++validCases;
+      char label[160]; snprintf(label,sizeof label,"%s%u reference matrix: %u cases (%u valid, %u faults)",signedDivide?"IDIV":"DIV",bits,total,validCases,faultCases);
+      report.check(label, failures == 0 && faultCases && validCases);
+      // Memory and register aliases must use the pre-instruction divisor.
+      context->ClearCodeCache(thread);
+      unsigned char memoryCode[] = {0x66, static_cast<unsigned char>(bits==8?0xf6:0xf7), static_cast<unsigned char>(signedDivide?0x3d:0x35),0,0x40,0,0x10,0xf4};
+      memcpy(mapping,memoryCode+skip,sizeof memoryCode-skip);
+      unsigned memoryTotal=0, memoryFailures=0;
+      armxbox::division::cases(bits,[&](armxbox::division::Input input) {
+        const auto expected=armxbox::division::reference(input,bits,signedDivide);
+        *reinterpret_cast<uint32_t*>(Data)=input.ecx;
+        state.gregs[0]=input.eax; state.gregs[2]=input.edx; state.gregs[1]=input.ecx;
+        context->SetFlagsFromCompactedEFLAGS(thread,0xed7);
+        const uint32_t flags=context->ReconstructCompactedEFLAGS(thread,false,nullptr,0);
+        state.rip=Code; execute();
+        bool ok=expected.fault?isExit(SIGFPE,0,Code):isExit(SIGSEGV,13,Code+7-skip);
+        ok &= state.gregs[0]==expected.eax && state.gregs[2]==expected.edx && state.gregs[1]==input.ecx;
+        if(expected.fault) ok &= context->ReconstructCompactedEFLAGS(thread,false,nullptr,0)==flags;
+        ++memoryTotal; memoryFailures += !ok;
+      });
+      snprintf(label,sizeof label,"%s%u memory divisor matrix: %u cases",signedDivide?"IDIV":"DIV",bits,memoryTotal);
+      report.check(label,memoryFailures==0);
+      unsigned aliasTotal=0, aliasFailures=0;
+      for(unsigned operand : {0U,2U,4U,6U}) {
+        if(bits!=8 && operand>=4) continue;
+        context->ClearCodeCache(thread);
+        unsigned char aliasCode[]={0x66,static_cast<unsigned char>(bits==8?0xf6:0xf7),static_cast<unsigned char>((signedDivide?0xf8:0xf0)|operand),0xf4};
+        memcpy(mapping,aliasCode+skip,sizeof aliasCode-skip);
+        for(uint32_t seed=0;seed<256;++seed) {
+          uint32_t a=seed*0x01010101U,d=(255-seed)*0x01010101U;
+          uint32_t divisor=operand==0?a:operand==2?d:operand==4?a>>8:d>>8;
+          auto expected=armxbox::division::reference({a,d,divisor},bits,signedDivide);
+          state.gregs[0]=a; state.gregs[2]=d; state.gregs[1]=0xcafebabe;
+          context->SetFlagsFromCompactedEFLAGS(thread,0xed7);
+          const uint32_t flags=context->ReconstructCompactedEFLAGS(thread,false,nullptr,0);
+          state.rip=Code; execute();
+          bool ok=expected.fault?isExit(SIGFPE,0,Code):isExit(SIGSEGV,13,Code+length);
+          ok &= state.gregs[0]==expected.eax && state.gregs[2]==expected.edx && state.gregs[1]==0xcafebabe;
+          if(expected.fault) ok &= context->ReconstructCompactedEFLAGS(thread,false,nullptr,0)==flags;
+          ++aliasTotal; aliasFailures += !ok;
+        }
+      }
+      snprintf(label,sizeof label,"%s%u aliased dividend/divisor: %u cases",signedDivide?"IDIV":"DIV",bits,aliasTotal);
+      report.check(label,aliasFailures==0);
+    }
 #ifdef __aarch64__
     report.check("Android x18 unchanged across all engine entries/exits", abiOK[0]);
     report.check("native SP restored and 16-byte aligned at return boundary", abiOK[1]);

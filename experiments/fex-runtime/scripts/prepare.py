@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch immutable dependencies and apply the reviewed Android portability patch."""
+"""Fetch immutable dependencies and apply the reviewed Android/IA-32 patches."""
 import argparse
 import json
 from pathlib import Path
@@ -32,16 +32,24 @@ def main():
             raise SystemExit(f'{path}: expected {pin}, got {actual}')
         if run('git', '-C', str(checkout / path), 'status', '--porcelain', capture_output=True).stdout:
             raise SystemExit(f'{path}: modified dependency checkout')
-    patch = ROOT / 'patches/0001-bionic-getdents.diff'
-    reverse = subprocess.run(['git', '-C', str(checkout), 'apply', '--reverse', '--check', str(patch)],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if reverse.returncode:
-        run('git', '-C', str(checkout), 'apply', '--check', str(patch))
-        run('git', '-C', str(checkout), 'apply', str(patch))
-    expected = patch.read_text()
+    patches = [ROOT / 'patches/0001-bionic-getdents.diff', ROOT / 'patches/0002-ia32-divide-errors.diff']
+    for patch in patches:
+        reverse = subprocess.run(['git', '-C', str(checkout), 'apply', '--reverse', '--check', str(patch)],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if reverse.returncode:
+            run('git', '-C', str(checkout), 'apply', '--check', str(patch))
+            run('git', '-C', str(checkout), 'apply', str(patch))
+    # Git orders a whole-tree diff by path; independent patches may be listed in
+    # a different order. Compare exact per-file diff blocks, including extra edits.
+    def normalized(diff):
+        blocks = diff.split('diff --git ')
+        if blocks[0].strip():
+            raise SystemExit('Unexpected patch preamble')
+        return sorted('diff --git ' + block for block in blocks[1:])
+    expected = ''.join(p.read_text() for p in patches)
     actual = run('git', '-C', str(checkout), 'diff', capture_output=True).stdout
-    if actual != expected:
-        raise SystemExit('Dependency diff differs from reviewed portability patch')
+    if normalized(actual) != normalized(expected):
+        raise SystemExit('Dependency diff differs from reviewed portability/CPU patches')
     print(f'FEX {LOCK["commit"]}; dependency pins and portability diff verified')
 
 if __name__ == '__main__':
