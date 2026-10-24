@@ -74,6 +74,9 @@ Cloud checks may establish compilation, emitted-code structure and host fixture
 correctness. Android execution, sustained thermal behavior and title performance
 need the device. Preserve those distinctions in every increment.
 
+See the [remaining embedding gates](next-gates.md) for source-backed allocator,
+CPU-policy and bounded-execution work before broad integration.
+
 ## Subsequent milestones
 
 - **B:** controlled XBE loader, architectural state, guest memory/TLS and minimum
