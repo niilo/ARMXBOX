@@ -57,7 +57,7 @@ checks engine state and is not a statement that the Xbox supports SSE2.
 
 The [CPU-policy plan](phase06-plan.md) records source findings and a
 staged validation sequence. [Phase0.6](phase06.md) implements reference-backed
-CPUID identity and awaits native acceptance. Complete instruction/privilege
+CPUID identity, accepted by the [88-check native report](phase06-android-report.md). Complete instruction/privilege
 admission separately. The CPUID profile must cover supported leaves,
 vendor/signature, cache information and stable topology. Validate it against the
 reference backend. Separately decide instruction availability: masking a CPUID

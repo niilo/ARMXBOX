@@ -15,8 +15,8 @@ word-MMIO service/resume. The previous [Phase0.4 failures](phase04-android-repor
 are retained as regression evidence. [Phase0.5](phase05.md) adds a bounded host allocator
 and host coexistence checks; the [Pocket S report](phase05-android-report.md)
 passes all 75 native checks. Full bridge/memory,
-[Phase0.6](phase06.md) adds reference-backed CPUID identity; native acceptance
-is pending. Instruction/privilege policy and bounded execution remain open.
+[Phase0.6](phase06.md) adds reference-backed CPUID identity; the
+[Pocket S report](phase06-android-report.md) passes all 88 native checks. Instruction/privilege policy and bounded execution remain open.
 Broad HLE has not started. See the
 [remaining embedding gates](next-gates.md) and [build/run instructions](../../../experiments/fex-runtime/README.md).
 

@@ -59,8 +59,9 @@ The current build is **phase0.6/code7**, adding a
 [reference-backed Xbox CPU identity](../../docs/devel/fex-hle/phase06.md).
 Phase0.5 passes all 75 checks on Pocket S. The new cumulative native probe expects
 **88 PASS lines**: those 75 plus 12 identity checks and one native ABI summary
-across 111 additional guest entries. Native acceptance of this increment is
-pending. Instruction restrictions and virtual privilege remain open; CPUID
+across 111 additional guest entries. The
+[Pocket S report](../../docs/devel/fex-hle/phase06-android-report.md) passes all
+88 checks and accepts this scoped native increment. Instruction restrictions and virtual privilege remain open; CPUID
 identity alone does not admit arbitrary Xbox code.
 
 The bounded arena reserves 2 GiB of virtual capacity, not physical memory.

@@ -54,8 +54,9 @@ This demonstrates sensitivity to an actual reference-model discrepancy.
 
 The cumulative Android diagnostic is **phase0.6/code7**. Expected native result:
 **88 PASS checks** = 75 accepted checks + 12 identity checks + one six-witness ABI
-summary across the 111 new entries. This new native increment is pending a Pocket
-S report. Cloud VIXL results do not establish Android native call-path behavior.
+summary across the 111 new entries. The [Pocket S report](phase06-android-report.md)
+passes all 88 checks and accepts this scoped native increment. This does not
+establish general instruction admission or virtual privilege behavior.
 
 A correct CPUID answer does not enforce instruction availability. In particular,
 XGETBV and SSE2/later opcodes are not disabled merely by hiding their CPUID bits.

@@ -1,7 +1,7 @@
 # Next increment: deterministic Xbox CPU policy
 
 [Phase0.6](phase06.md) implements the CPUID-identity portion of this plan; its
-new Android checks are pending device acceptance. Instruction admission and
+[88-check Pocket S report](phase06-android-report.md) accepts its native checks. Instruction admission and
 privilege behavior below are not yet implemented. The [Phase0.5 Pocket S report](phase05-android-report.md) accepts
 the bounded allocator increment. CPU policy can now advance independently of
 further device input. Full memory/bridge and bounded-execution gates remain open.
