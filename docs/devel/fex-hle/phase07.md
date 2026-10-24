@@ -65,7 +65,7 @@ CPUID identity. Those policies and bounded return/cancellation remain open.
 
 ## Validation and device gate
 
-The cumulative cloud suite expects **96 PASS checks**: 76 inherited checks,
+The cumulative cloud suite passes **96 checks** in both translation modes: 76 inherited checks,
 19 precise-exit checks and one canonical-EFLAGS check. Both translation modes
 must pass. The original 32-slot reconstruction is a negative control and must
 fail the new canonical/exit-state checks; restoring the reviewed correction must
@@ -74,7 +74,8 @@ dirty-source rejection and real-index preservation.
 
 The cumulative Android APK is **phase0.7/code8**. Its native expectation is
 **109 PASS checks**: 88 accepted checks plus those 20 common checks and one
-six-witness ABI summary over all 152 new entries. Native acceptance of this
-increment is pending a new Pocket S report. Full bridge/memory semantics,
+six-witness ABI summary over all 152 new entries. The
+[Pocket S report](phase07-android-report.md) passes all 109 checks and accepts
+this scoped native increment. Full bridge/memory semantics,
 recoverable engine OOM/unload and 16 KiB host support remain open too. No FPS,
 audio, thermal or gameplay improvement is claimed.

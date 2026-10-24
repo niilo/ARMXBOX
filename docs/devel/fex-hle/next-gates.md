@@ -66,8 +66,9 @@ unsupported-instruction tests and preserve fault PC/state rather than silently
 accepting unknown opcodes.
 
 [Phase0.7](phase07.md) exercises a scoped controlled-exit matrix and fixes
-nonarchitectural high bits in reconstructed EFLAGS. Its native acceptance is
-pending. Those checks do not implement virtual privilege.
+nonarchitectural high bits in reconstructed EFLAGS. The
+[109-check Pocket S report](phase07-android-report.md) accepts the scoped increment.
+Those checks do not implement virtual privilege.
 
 Pinned FEX's dispatcher routes CLI/STI and control-register accesses to its
 permission-restricted path, appropriate to its original userspace model.
@@ -79,7 +80,9 @@ rejected or deferred to the reference backend.
 
 ## Execution and performance admission
 
-Add a demonstrated bounded return mechanism before accepting arbitrary guest
+The [bounded-execution plan](phase08-plan.md) records the next implementation
+sequence and source constraints. Add a demonstrated bounded return mechanism
+before accepting arbitrary guest
 entry points. Constructed terminating fixtures and the CI process timeout do not
 provide cancellation of a non-terminating native guest in an app process.
 Verify cooperative stop latency, safe state publication and cleanup across guest

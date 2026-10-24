@@ -154,7 +154,8 @@ virtual privilege and bounded return remain open; no title performance is measur
 public EFLAGS reconstruction API. It adds 256 independent API round trips and
 19 controlled privileged-exit cases with arithmetic and warm-cache variants
 (152 new guest entries), inaccessible I/O operands and following sentinels.
-The cumulative cloud suite expects 96 checks and native probe 109. This is
+The cumulative cloud suite passes 96 checks in both modes; the
+[Pocket S report](phase07-android-report.md) passes all 109 native checks. This is
 precise rejection, not Xbox ring-0 virtualization or complete ISA admission.
 
 ## Acceptance and next autonomous work

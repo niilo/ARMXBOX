@@ -61,7 +61,8 @@ The [Phase0.6 Pocket S report](../../docs/devel/fex-hle/phase06-android-report.m
 passes all 88 checks. The new cumulative native probe expects **109 PASS lines**:
 those 88 plus 19 precise-exit checks, one canonical-EFLAGS check and one native
 ABI summary across 152 new guest entries. It also tests 256 EFLAGS API round
-trips. Native acceptance of this increment is pending. Controlled rejection is
+trips. The [Pocket S report](../../docs/devel/fex-hle/phase07-android-report.md)
+passes all 109 checks and accepts the scoped increment. Controlled rejection is
 not virtual privilege; instruction admission, virtual interrupts/timers and
 bounded execution remain open.
 
