@@ -1,4 +1,5 @@
 #include "diagnostic.h"
+#include "execution_control_probe.h"
 #include "execution_boundary.h"
 #include "cpu_identity_probe.h"
 #include "division_cases.h"
@@ -76,7 +77,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.7; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.8; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -497,6 +498,27 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
 #endif
   report.check("compacted EFLAGS excludes private NZCV and reserved high bits", identity.privileged.canonicalFlags);
   if (identity.privileged.detail[0]) report.line("Privileged exit detail: %s\n", identity.privileged.detail);
+  diagnosticLog("FEX probe: controlled execution");
+  const auto controlled = armxbox::runExecutionControlProbe(features, &calls, Code, Data, Stack, diagnosticLog);
+  for (unsigned i = 0; i < controlled.passed.size(); ++i) {
+    report.check(armxbox::executionCheckLabel(i), controlled.passed[i]);
+  }
+#ifdef __ANDROID__
+  const char *stopLabels[] = {
+    "native cold loop stops after progress and rejects concurrent run/reset",
+    "native cold stop publishes state before thread reset",
+    "native repeated loop stops after progress and rejects concurrent run/reset",
+    "native repeated stop publishes state before thread reset"
+  };
+  for (unsigned i = 0; i < controlled.native.size(); ++i) report.check(stopLabels[i], controlled.native[i]);
+  report.check("controlled execution preserves all six native ABI witnesses",
+               controlled.entries == 19 && controlled.abiMask == 0x3f);
+  report.line("Observed cooperative stop and join: %llu, %llu us (fixture-specific)\n",
+      (unsigned long long)controlled.stopLatencyUs[0], (unsigned long long)controlled.stopLatencyUs[1]);
+#else
+  report.line("UNVERIFIED concurrent native cooperative stop and ABI: run Android ARM64 APK\n");
+#endif
+  if (controlled.detail[0]) report.line("Execution control detail: %s\n", controlled.detail);
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
   report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);

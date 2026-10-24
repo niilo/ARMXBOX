@@ -158,6 +158,17 @@ The cumulative cloud suite passes 96 checks in both modes; the
 [Pocket S report](phase07-android-report.md) passes all 109 native checks. This is
 precise rejection, not Xbox ring-0 virtualization or complete ISA admission.
 
+## Phase0.8 controlled execution
+
+[Phase0.8](phase08.md) adds explicit opt-in instruction-admission budgets and
+latched cooperative stop requests, using the existing translator and spill/stop
+path. Checkpoints publish architectural flags/registers and x87 stack state;
+default contexts emit none. Fifteen new common checks pass in the cloud alongside
+all earlier 96 checks (111 total) in both modes. The native increment expects
+129 checks, including worker-stop/state publication and ABI evidence. General
+callback/fault/REP/runtime latency, instruction/privilege/timer and memory gates
+remain open; this is not game/FPS evidence.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |

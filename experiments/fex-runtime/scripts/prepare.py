@@ -38,7 +38,8 @@ def main():
                ROOT / 'patches/0003-precise-memory-fault-state.diff',
                ROOT / 'patches/0004-bounded-host-arena.diff',
                ROOT / 'patches/0005-xbox-cpu-identity.diff',
-               ROOT / 'patches/0006-canonical-eflags.diff']
+               ROOT / 'patches/0006-canonical-eflags.diff',
+               ROOT / 'patches/0007-controlled-execution.diff']
     # Compose overlapping patches in an isolated index. Recognize exact reviewed
     # prefixes so repeat preparation never relies on reversing an older patch
     # whose context has legitimately been changed by a later patch.

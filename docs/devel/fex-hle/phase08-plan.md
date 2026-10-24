@@ -3,8 +3,9 @@
 The [Phase0.7 Pocket S report](phase07-android-report.md) accepts all 109 native
 checks, including architectural EFLAGS and precise controlled exits. The next
 runtime gate is return from a nonterminating guest without terminating the app
-process. This document is a source-backed implementation plan, not an implemented
-cancellation API, latency result or new APK.
+process. [Phase0.8](phase08.md) now implements the first opt-in instruction-checkpoint
+increment; its 129 native checks are pending. This document retains the broader
+plan and remaining coverage requirements, not a claim of general cancellation.
 
 ## Engine mechanisms and constraints
 
