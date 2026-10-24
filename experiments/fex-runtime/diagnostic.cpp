@@ -108,7 +108,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     }
   };
   memorySnapshot("before arena");
-  const auto arena = armxbox::prepareHostArena(Code);
+  const auto arena = armxbox::prepareHostArena(Code, diagnosticLog);
   memorySnapshot("after arena/host controls");
   const char *arenaLabels[] = {
     "arena rejects incompatible host pages without changing hooks",

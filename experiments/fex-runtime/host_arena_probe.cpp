@@ -253,9 +253,16 @@ HostMemorySnapshot hostMemorySnapshot()
     result.available = vm && rss;
     return result;
 }
-HostArenaResults prepareHostArena(uintptr_t guestCode)
+HostArenaResults prepareHostArena(uintptr_t guestCode,
+                                  void (*log)(const char *))
 {
     HostArenaResults result;
+    auto stage = [log](const char *text) {
+        if (log) {
+            log(text);
+        }
+    };
+    stage("host arena: validation controls");
     const auto originalMap = FEXCore::Allocator::mmap;
     const auto originalUnmap = FEXCore::Allocator::munmap;
     auto invalid = [&](size_t page, size_t size) {
@@ -276,6 +283,7 @@ HostArenaResults prepareHostArena(uintptr_t guestCode)
     if (sentinel != MAP_FAILED) {
         memset(sentinel, 0x19, Page);
     }
+    stage("host arena: starting concurrent host mappings");
     Churn concurrent;
     pthread_t id;
     const bool started = !pthread_create(&id, nullptr, churn, &concurrent);
@@ -284,9 +292,11 @@ HostArenaResults prepareHostArena(uintptr_t guestCode)
             sched_yield();
         }
     }
+    stage("host arena: reservation and hook setup");
     result.ready =
         FEXCore::Allocator::SetupBoundedHooks(Page, result.size, result.base);
     const int setupError = errno;
+    stage("host arena: joining setup worker");
     concurrent.stop.store(true, std::memory_order_release);
     const bool joined = started && !pthread_join(id, nullptr);
     result.passed[4] = result.ready && result.base >= GuestEnd &&
@@ -315,12 +325,17 @@ HostArenaResults prepareHostArena(uintptr_t guestCode)
                        outsideArena(reinterpret_cast<uintptr_t>(sentinel), Page,
                                     result.base, result.size) &&
                        sentinel[0] == 0x19 && sentinel[Page - 1] == 0x19;
+    stage("host arena: ordinary host allocation controls");
     result.passed[8] = normalAllocation(result.base, result.size);
     result.passed[9] = normalMapping(result.base, result.size);
+    stage("host arena: concurrent bounded mapping controls");
     result.passed[10] = hostWorkers(result.base, result.size);
+    stage("host arena: fresh library control");
     result.passed[11] = freshLibrary(result.base, result.size, result.detail,
                                      sizeof result.detail);
+    stage("host arena: partial free and reuse control");
     result.passed[12] = reuseMapping(result.base, result.size);
+    stage("host arena: bounds rejection controls");
     if (sentinel != MAP_FAILED) {
         errno = 0;
         const auto p = FEXCore::Allocator::mmap(
@@ -347,7 +362,9 @@ HostArenaResults prepareHostArena(uintptr_t guestCode)
     result.passed[14] = rejected && *low == 0x58;
     *low = saved;
     result.passed[15] = rejectedSizes(result.size);
+    stage("host arena: shared file control");
     result.passed[16] = fileAlias(result.base, result.size);
+    stage("host arena: setup controls finished");
     return result;
 }
 std::array<bool, 2> finishHostArena(uintptr_t base, size_t size)

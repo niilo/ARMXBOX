@@ -26,12 +26,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest armxbox_abi_witness_test armxbox_division_native_test armxbox_fault_policy_test -j 2
+          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest armxbox_abi_witness_test armxbox_division_native_test armxbox_fault_policy_test armxbox_host_arena_test -j 2
           timeout 30s "$RUNNER_TEMP/fex-host/armxbox_abi_witness_test" "$RUNNER_TEMP/fex-host/abi_witness.bin" | tee "$RUNNER_TEMP/fex-abi-witness.txt"
           timeout 30s "$RUNNER_TEMP/fex-host/armxbox_fault_policy_test" | tee "$RUNNER_TEMP/fex-fault-policy.txt"
           timeout 30s "$RUNNER_TEMP/fex-host/armxbox_division_native_test" | tee "$RUNNER_TEMP/fex-division-native.txt"
-          ARMXBOX_PROBE_SINGLE_BLOCK=1 timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" | tee "$RUNNER_TEMP/fex-fixtures-single.txt"
-          timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" | tee "$RUNNER_TEMP/fex-fixtures.txt"
+          for run in 1 2 3 4 5; do
+            timeout 30s "$RUNNER_TEMP/fex-host/armxbox_host_arena_test" > "$RUNNER_TEMP/fex-arena-$run.txt" 2> "$RUNNER_TEMP/fex-arena-$run-stderr.txt"
+          done
+          ARMXBOX_PROBE_SINGLE_BLOCK=1 timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" 2> "$RUNNER_TEMP/fex-fixtures-single-stderr.txt" | tee "$RUNNER_TEMP/fex-fixtures-single.txt"
+          timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" 2> "$RUNNER_TEMP/fex-fixtures-stderr.txt" | tee "$RUNNER_TEMP/fex-fixtures.txt"
+      - name: Capture host failure backtrace
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        run: |
+          if ! command -v gdb >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq gdb
+          fi
+          for target in armxbox_host_arena_test armxbox_fex_selftest; do
+            ARMXBOX_PROBE_SINGLE_BLOCK=1 timeout 120s gdb --batch \
+              -ex 'set pagination off' -ex 'set disable-randomization off' \
+              -ex run -ex 'thread apply all bt' --args "$RUNNER_TEMP/fex-host/$target" \
+              > "$RUNNER_TEMP/fex-$target-backtrace.txt" 2>&1 || true
+          done
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         if: always()
         with:
@@ -42,6 +60,9 @@ jobs:
             ${{ runner.temp }}/fex-division-native.txt
             ${{ runner.temp }}/fex-fixtures-single.txt
             ${{ runner.temp }}/fex-fault-policy.txt
+            ${{ runner.temp }}/fex-arena-*.txt
+            ${{ runner.temp }}/fex-fixtures*-stderr.txt
+            ${{ runner.temp }}/fex-*-backtrace.txt
           if-no-files-found: ignore
   android-diagnostic:
     needs: cpu-fixtures

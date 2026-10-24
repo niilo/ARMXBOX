@@ -16,6 +16,7 @@ struct HostMemorySnapshot {
     size_t virtualKiB = 0, residentKiB = 0;
 };
 HostMemorySnapshot hostMemorySnapshot();
-HostArenaResults prepareHostArena(uintptr_t guestCode);
+HostArenaResults prepareHostArena(uintptr_t guestCode,
+                                  void (*log)(const char *) = nullptr);
 std::array<bool, 2> finishHostArena(uintptr_t base, size_t size);
 } // namespace armxbox

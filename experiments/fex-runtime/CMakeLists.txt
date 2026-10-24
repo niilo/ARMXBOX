@@ -107,6 +107,8 @@ else()
   add_executable(armxbox_division_native_test division_native_test.cpp)
   # The native flags oracle uses balanced push/pop inside inline assembly.
   target_compile_options(armxbox_division_native_test PRIVATE -mno-red-zone)
+  add_executable(armxbox_host_arena_test host_arena_test.cpp)
+  target_link_libraries(armxbox_host_arena_test PRIVATE armxbox_fex_diagnostic)
   add_executable(armxbox_fex_selftest main.cpp)
   target_link_libraries(armxbox_fex_selftest PRIVATE armxbox_fex_diagnostic)
 endif()
