@@ -180,6 +180,18 @@ to 127; the [Pocket S report](phase09-android-report.md) passes all 148 native c
 including callback worker stop/state and six ABI witnesses across 27 entries.
 This remains a constructed subset, not broad kernel HLE or title performance.
 
+## Phase0.10 instruction rejection subset
+
+[Phase0.10](phase10.md) adds an immutable instruction policy independent of CPUID
+identity/checkpoints. Eight reviewed patches remain on the same immutable FEX
+pin. Handler dispatch and disabled-VEX decode produce precise #UD for the
+selected newer forms; default instruction behavior is retained. Generated
+expected cases come from executed reference captures, including their SSE2
+permissiveness finding. The cumulative expectation is 154 cloud checks and 176
+native checks, including six ABI witnesses across 113 new entries. Native
+acceptance is pending; virtual IF/timers and broad instruction admission remain
+open. This is not a game/FPS result.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |

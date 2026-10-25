@@ -23,8 +23,9 @@ high bits in EFLAGS reconstruction; the
 stop for constructed loops; the [Pocket S report](phase08-android-report.md)
 passes all 129 native checks. [Phase0.9](phase09.md) implements a constructed bounded exit-based bridge
 and callback diagnostic; the [Pocket S report](phase09-android-report.md)
-passes all 148 checks. The [next increment](phase10-plan.md) addresses
-reference-backed instruction and virtual-state policy. General execution,
+passes all 148 checks. [Phase0.10](phase10.md) adds an opt-in reference-backed
+instruction rejection subset; its 176 native checks are pending. The broader
+[virtual-state plan](phase10-plan.md) remains open. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the
 [remaining embedding gates](next-gates.md) and [build/run instructions](../../../experiments/fex-runtime/README.md).

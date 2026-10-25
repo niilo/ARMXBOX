@@ -78,7 +78,7 @@ target_link_options(armxbox_fex_link_probe PRIVATE -Wl,--no-undefined -Wl,-z,max
 add_library(armxbox_host_mapping_probe SHARED host_mapping_probe.c)
 target_link_options(armxbox_host_mapping_probe PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384)
 find_package(Threads REQUIRED)
-add_library(armxbox_fex_diagnostic SHARED diagnostic.cpp pc_metadata_probe.cpp host_arena_probe.cpp cpu_identity_probe.cpp privileged_exit_probe.cpp execution_control_probe.cpp bounded_bridge_probe.cpp)
+add_library(armxbox_fex_diagnostic SHARED diagnostic.cpp pc_metadata_probe.cpp host_arena_probe.cpp cpu_identity_probe.cpp privileged_exit_probe.cpp execution_control_probe.cpp bounded_bridge_probe.cpp instruction_policy_probe.cpp)
 add_dependencies(armxbox_fex_diagnostic armxbox_host_mapping_probe)
 if(NOT ANDROID)
   set_target_properties(armxbox_fex_diagnostic PROPERTIES BUILD_RPATH "$ORIGIN")

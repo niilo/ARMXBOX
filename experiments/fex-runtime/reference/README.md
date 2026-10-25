@@ -90,3 +90,9 @@ the expected outcomes. The script does not alter the production backend or APK.
 The capture establishes compatibility observations, not Android native execution,
 physical Xbox accuracy, game admission or performance. See the
 [next policy plan](../../../docs/devel/fex-hle/phase10-plan.md).
+
+The Phase0.10 diagnostic consumes these outcomes through
+`xbox_instruction_cases.h`. Regenerate it with
+`python3 experiments/fex-runtime/scripts/generate-xbox-instructions.py`; both CI
+jobs use `--check` to catch drift. The JSON remains the executed reference,
+including the observed SSE2 permissiveness, rather than FEX-derived expected data.

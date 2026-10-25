@@ -39,7 +39,8 @@ is retained-reference compatibility behavior, not a certification of physical
 Pentium III instruction support. Do not turn a CPUID bit into blanket decoder
 rejection or silently treat reference permissiveness as Xbox hardware support.
 Document the policy choice per family and gather architectural/physical evidence
-where reference behavior is ambiguous. No engine admission patch is added yet.
+where reference behavior is ambiguous. The first opt-in [instruction-policy increment](phase10.md) is now implemented;
+its native acceptance is pending. It does not implement virtual flags or clocks.
 
 The reusable capture tool, immutable binary/ROM/assembly checksums and full
 outputs are committed. Replacing the UD2 control with NOP makes an actual ROM

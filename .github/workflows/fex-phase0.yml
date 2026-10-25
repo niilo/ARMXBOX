@@ -14,8 +14,10 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
-      - name: Check reference CPUID table
-        run: python3 experiments/fex-runtime/scripts/generate-xbox-cpuid.py --check
+      - name: Check reference CPU tables
+        run: |
+          python3 experiments/fex-runtime/scripts/generate-xbox-cpuid.py --check
+          python3 experiments/fex-runtime/scripts/generate-xbox-instructions.py --check
       - name: Prepare pinned engine
         run: python3 experiments/fex-runtime/scripts/prepare.py "$RUNNER_TEMP/FEX"
       - name: Configure host simulator
@@ -81,8 +83,10 @@ jobs:
       - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.1.0 ndk;30.0.15729638'
-      - name: Check reference CPUID table
-        run: python3 experiments/fex-runtime/scripts/generate-xbox-cpuid.py --check
+      - name: Check reference CPU tables
+        run: |
+          python3 experiments/fex-runtime/scripts/generate-xbox-cpuid.py --check
+          python3 experiments/fex-runtime/scripts/generate-xbox-instructions.py --check
       - name: Prepare pinned engine
         run: python3 experiments/fex-runtime/scripts/prepare.py "$RUNNER_TEMP/FEX"
       - name: Compile and link the full Android core
@@ -98,9 +102,9 @@ jobs:
         run: bash experiments/fex-runtime/scripts/package-apk.sh "$RUNNER_TEMP/fex-android" "$RUNNER_TEMP/fex-apk"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: armxbox-fex-phase0.9-debug
+          name: armxbox-fex-phase0.10-debug
           path: |
-            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.9-debug.apk
+            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.10-debug.apk
             ${{ runner.temp }}/fex-apk/assets/THIRD_PARTY_NOTICES
           if-no-files-found: error
           retention-days: 30

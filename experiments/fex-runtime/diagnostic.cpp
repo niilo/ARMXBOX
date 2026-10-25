@@ -1,4 +1,5 @@
 #include "diagnostic.h"
+#include "instruction_policy_probe.h"
 #include "execution_control_probe.h"
 #include "execution_boundary.h"
 #include "cpu_identity_probe.h"
@@ -77,7 +78,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.9; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.10; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -534,6 +535,19 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
 #endif
   report.line("Bounded bridge controlled entries: %u\n", controlled.bridge.entries);
   if (controlled.bridge.detail[0]) report.line("Bounded bridge detail: %s\n", controlled.bridge.detail);
+  const auto instructions = armxbox::runInstructionPolicyProbe(
+      features, &calls, Code, Data, Stack, diagnosticLog);
+  for (unsigned i = 0; i < instructions.passed.size(); ++i) {
+    report.check(armxbox::instructionPolicyCheckLabel(i), instructions.passed[i]);
+  }
+#ifdef __aarch64__
+  report.check("instruction policy entries preserve all six native ABI witnesses",
+               instructions.entries == 113 && instructions.abiMask == 0x3f);
+#endif
+  report.line("Instruction policy entries: %u\n", instructions.entries);
+  if (instructions.detail[0]) {
+    report.line("Instruction policy detail: %s\n", instructions.detail);
+  }
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
   report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);

@@ -44,7 +44,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.9-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.10-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -55,19 +55,16 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.9/code10**, adding the
-[bounded typed bridge and reverse callback diagnostic](../../docs/devel/fex-hle/phase09.md).
-[Phase0.8 passes all 129 native checks](../../docs/devel/fex-hle/phase08-android-report.md)
-on Pocket S. The new cumulative expectation is **148 native PASS checks**:
-those 129, 16 common bridge checks, two native callback stop/state checks and
-an ABI summary across 27 bridge entries. The
-[Pocket S report](../../docs/devel/fex-hle/phase09-android-report.md) passes all
-148 native checks. The [next increment](../../docs/devel/fex-hle/phase10-plan.md)
-addresses reference-backed instruction and virtual-state policy.
-The cloud expectation is 127 checks in both translation modes. The native report
-includes fixture-specific cooperative and callback request-to-join durations.
-No arbitrary XBE/game code, title FPS, general callback/raw-fault cancellation,
-timer/privilege policy or 16 KiB support is established.
+The current build is **phase0.10/code11**, adding an
+[opt-in reference instruction rejection subset](../../docs/devel/fex-hle/phase10.md).
+[Phase0.9 passes all 148 native checks](../../docs/devel/fex-hle/phase09-android-report.md)
+on Pocket S. The new cumulative expectation is **176 native PASS checks**:
+those 148, 27 common policy checks and a six-witness ABI summary across 113 new
+entries. Native Phase0.10 acceptance is pending. The cloud expectation is 154
+checks in both modes. Expected instruction cases are generated from independent
+reference captures; the selected policy is not a complete Xbox ISA allowlist.
+Virtual IF/clocks, broad XBE/game admission and title FPS/audio/thermal measurement
+remain later work.
 
 The bounded arena reserves 2 GiB of virtual capacity, not physical memory.
 [Phase0.5's Pocket S report](../../docs/devel/fex-hle/phase05-android-report.md)
