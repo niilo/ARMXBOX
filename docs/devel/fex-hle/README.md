@@ -23,12 +23,11 @@ high bits in EFLAGS reconstruction; the
 stop for constructed loops; the [Pocket S report](phase08-android-report.md)
 passes all 129 native checks. [Phase0.9](phase09.md) implements a constructed bounded exit-based bridge
 and callback diagnostic; the [Pocket S report](phase09-android-report.md)
-passes all 148 checks. [Phase0.10](phase10.md) adds an opt-in reference-backed
-instruction rejection subset; the user reports an immediate native crash.
-Its gate remains unaccepted; [Phase0.10.1](phase101.md) adds recoverable progress
-which located a code-buffer protection failure. [Phase0.10.2](phase102.md)
-fixes reproduced allocation error paths and reduces cold-test buffer pressure;
-a native rerun is required. The broader
+passes all 148 checks. [Phase0.10](phase10.md) adds an opt-in reference-backed instruction rejection
+subset. After a native allocation regression, [Phase0.10.2](phase102.md) passes
+[all 177 native checks and 113 policy entries](phase102-android-report.md).
+This accepts the scoped increment on Pocket S and permits controlled generated
+XBE work to proceed. The broader
 [virtual-state plan](phase10-plan.md) remains open. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the

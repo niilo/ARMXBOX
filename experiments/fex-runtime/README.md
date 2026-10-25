@@ -1,11 +1,5 @@
 # ARMXBOX FEX Phase 0 probe
 
-An isolated, game-free CPU/embedding diagnostic, not a playable emulator. The
-production app and full-system backend do not depend on this directory.
-
-The goal remains faster title execution than the reference backend. This
-increment establishes buildability and CPU contracts; it measures no title FPS.
-Do not interpret VIXL simulator timing as Android performance.
 
 ## Build and run
 
@@ -55,23 +49,17 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-Phase0.10/code11 and its recovery revision crashed on Pocket S. The recovered
-journal locates the stop after a code-buffer guard protection failure, before
-the seventh policy guest entry. Native policy acceptance remains **pending**.
-[Phase0.10.2](../../docs/devel/fex-hle/phase102.md) reduces unnecessary JIT buffer
-recreation in cold translation tests and fixes independently reproduced mapping
-error handling. It retains all policy entries and CPU expectations. This is not
-a confirmed device fix.
+The current build is **phase0.10.2/code13**. Its
+[Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md) passes all
+**177 native checks and 113 policy entries**, clearing the earlier diagnostic
+crash for this run. The earlier allocation cause was not individually isolated.
+Cloud fixtures pass 155 checks in both modes. Controlled generated XBE work is
+next; virtual IF/clocks, general memory/atomic/REP/helper/fault bounds and retail
+admission remain open. The [reference instruction subset](../../docs/devel/fex-hle/phase10.md)
+is not a complete Xbox ISA allowlist.
 
-The current build is **phase0.10.2/code13**. Expect **177 native PASS checks**
-and 113 policy guest entries; cloud fixtures expect 155 checks in both modes.
-[Phase0.9](../../docs/devel/fex-hle/phase09-android-report.md) remains the latest
-accepted native increment. If the app closes, **reopen it and Share report before
-another run**; a new run overwrites saved progress. No ADB is needed.
-
-The [reference instruction subset](../../docs/devel/fex-hle/phase10.md) is not a
-complete Xbox ISA allowlist. Virtual IF/clocks, broad XBE/game admission and title
-FPS/audio/thermal measurement remain later work.
+If a later diagnostic closes, **reopen it and Share report before another run**;
+a new run overwrites saved progress. No ADB is needed.
 
 The bounded arena reserves 2 GiB of virtual capacity, not physical memory.
 [Phase0.5's Pocket S report](../../docs/devel/fex-hle/phase05-android-report.md)
