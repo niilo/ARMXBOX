@@ -81,7 +81,10 @@ The diagnostic is **phase0.8/code9**. Expected native result: **129 PASS checks*
 summary across 19 additional controlled calls. Reports include two observed
 request-to-join durations in microseconds, including wrapper/TLS/worker-exit
 costs. They are fixture-specific observations, not a universal latency bound.
-The new native contract is pending Pocket S execution.
+The [Pocket S report](phase08-android-report.md) passes all 129 native checks,
+including both worker stops and all six ABI witnesses. Observed request-to-join
+times are 43 and 39 microseconds for these fixtures. The broader limits below
+remain open; see the [next bridge increment](phase09-plan.md).
 
 ## Limits before broader admission
 

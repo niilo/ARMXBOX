@@ -60,7 +60,9 @@ The current build is **phase0.8/code9**, adding
 [Phase0.7 passes all 109 checks](../../docs/devel/fex-hle/phase07-android-report.md)
 on Pocket S. The new cumulative native expectation is **129 PASS checks**:
 those 109, 15 common execution-control checks, four native stop/state checks
-and an ABI summary across 19 controlled calls. Native acceptance is pending.
+and an ABI summary across 19 controlled calls. The
+[Pocket S report](../../docs/devel/fex-hle/phase08-android-report.md) passes all
+129 checks. Next is the [bounded bridge increment](../../docs/devel/fex-hle/phase09-plan.md).
 The report includes two fixture-specific request-to-join durations. These
 constructed checkpoint tests do not admit arbitrary XBE/game code or establish
 FPS, callback/raw-fault cancellation, timer/privilege policy or 16 KiB support.

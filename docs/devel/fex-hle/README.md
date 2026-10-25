@@ -20,7 +20,9 @@ passes all 75 native checks. Full bridge/memory,
 high bits in EFLAGS reconstruction; the
 [Pocket S report](phase07-android-report.md) passes all 109 native checks.
 [Phase0.8](phase08.md) implements opt-in instruction budgets and cooperative
-stop for constructed loops; its native checks are pending. General execution,
+stop for constructed loops; the [Pocket S report](phase08-android-report.md)
+passes all 129 native checks. The [next increment](phase09-plan.md) covers a
+bounded exit-based bridge and callbacks. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the
 [remaining embedding gates](next-gates.md) and [build/run instructions](../../../experiments/fex-runtime/README.md).

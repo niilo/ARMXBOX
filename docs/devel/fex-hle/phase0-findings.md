@@ -165,7 +165,8 @@ latched cooperative stop requests, using the existing translator and spill/stop
 path. Checkpoints publish architectural flags/registers and x87 stack state;
 default contexts emit none. Fifteen new common checks pass in the cloud alongside
 all earlier 96 checks (111 total) in both modes. The native increment expects
-129 checks, including worker-stop/state publication and ABI evidence. General
+129 checks; the [Pocket S report](phase08-android-report.md) passes all 129,
+including worker-stop/state publication and ABI evidence. General
 callback/fault/REP/runtime latency, instruction/privilege/timer and memory gates
 remain open; this is not game/FPS evidence.
 
