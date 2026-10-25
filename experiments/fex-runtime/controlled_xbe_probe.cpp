@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "controlled_xbe.h"
 #include "execution_boundary.h"
 #include <FEXCore/Core/HostFeatures.h>
@@ -182,6 +183,7 @@ runControlledXbeProbe(const FEXCore::HostFeatures &features,
     {
         void *held = reserve(XbeBase, XbeImageSize);
         if (held && !::mprotect(held, Page, PROT_READ | PROT_WRITE)) {
+            // Force an actual read after the conflict attempt.
             auto *p = static_cast<volatile uint32_t *>(held);
             *p = 0x7c12ef49;
             Loaded conflict;

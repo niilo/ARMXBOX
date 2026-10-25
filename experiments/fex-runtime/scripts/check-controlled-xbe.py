@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
 """Independent binary/header and GNU assembler check for our generated XBE."""
 import argparse
 import hashlib

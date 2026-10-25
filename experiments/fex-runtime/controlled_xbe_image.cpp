@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include "controlled_xbe.h"
 #include <algorithm>
 #include <cstring>
