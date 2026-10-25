@@ -1,4 +1,5 @@
 #include "diagnostic.h"
+#include "diagnostic_trace.h"
 #include "instruction_policy_probe.h"
 #include "execution_control_probe.h"
 #include "execution_boundary.h"
@@ -40,6 +41,7 @@ constexpr uintptr_t Code = 0x10000000, Data = Code + 0x4000, Stack = Code + 0x80
 constexpr size_t RegionSize = 0x10000;
 std::atomic_flag Started = ATOMIC_FLAG_INIT;
 void diagnosticLog(const char* text) {
+  armxbox::traceLine(text);
 #ifdef __ANDROID__
   __android_log_write(ANDROID_LOG_INFO, "ARMXBOX-FEX", text);
 #else
@@ -78,7 +80,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.10; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.10.1; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -535,6 +537,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
 #endif
   report.line("Bounded bridge controlled entries: %u\n", controlled.bridge.entries);
   if (controlled.bridge.detail[0]) report.line("Bounded bridge detail: %s\n", controlled.bridge.detail);
+  diagnosticLog("FEX probe: instruction policy guard checks");
   const auto instructions = armxbox::runInstructionPolicyProbe(
       features, &calls, Code, Data, Stack, diagnosticLog);
   for (unsigned i = 0; i < instructions.passed.size(); ++i) {

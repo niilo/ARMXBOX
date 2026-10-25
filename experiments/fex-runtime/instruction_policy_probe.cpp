@@ -59,6 +59,8 @@ InstructionPolicyResults runInstructionPolicyProbe(
     uintptr_t code, uintptr_t data, uintptr_t stack, void (*log)(const char *))
 {
     InstructionPolicyResults result;
+    if (log)
+        log("policy: unknown-value and mode/cache factory guards");
     result.passed[0] = !Context::CreateNewContext(features, Identity::Default,
                                                   false, Policy(0xffffffff));
     unsigned optionIndex = 1;
@@ -72,12 +74,16 @@ InstructionPolicyResults runInstructionPolicyProbe(
         FEXCore::Config::Set(option, "0");
     }
     {
+        if (log)
+            log("policy: independent identity/context creation");
         auto context = Context::CreateNewContext(
             features, Identity::Default, false, Policy::XboxReferenceSubset);
         result.passed[20] =
             context && (context->RunCPUIDFunction(1, 0).edx & (1U << 26)) &&
             context->RunCPUIDFunction(0, 0).eax > 2;
         FEXCore::Config::Set(FEXCore::Config::CONFIG_DISKCACHE, "1");
+        if (log)
+            log("policy: incompatible-cache InitCore guard");
         result.passed[5] = context && !context->InitCore();
         FEXCore::Config::Set(FEXCore::Config::CONFIG_DISKCACHE, "0");
     }
@@ -95,6 +101,15 @@ InstructionPolicyResults runInstructionPolicyProbe(
             contextFeatures.SupportsSVE256 = false;
         }
         const bool checkpoints = pass != 3;
+        char contextStage[160];
+        std::snprintf(contextStage, sizeof contextStage,
+                      "policy context pass=%u restricted=%u checkpoints=%u "
+                      "avx=%u sve256=%u",
+                      pass, restricted, checkpoints,
+                      contextFeatures.SupportsAVX,
+                      contextFeatures.SupportsSVE256);
+        if (log)
+            log(contextStage);
         FEXCore::SignalDelegator signals;
         auto context = Context::CreateNewContext(
             contextFeatures, Identity::XboxReference, checkpoints,
@@ -110,6 +125,8 @@ InstructionPolicyResults runInstructionPolicyProbe(
             break;
         }
         result.passed[20] &= context->RunCPUIDFunction(1, 0).eax == 0x68a;
+        if (log)
+            log("policy: InitCore returned; creating engine thread");
         auto *thread = context->CreateThread(nullptr);
         FEXCore::Allocator::RegisterTLSData(thread);
         auto &state = thread->CurrentFrame->State;
@@ -153,6 +170,13 @@ InstructionPolicyResults runInstructionPolicyProbe(
                 call.reason = Reason::GuestExit;
             }
             ++result.entries;
+            std::snprintf(stage, sizeof stage,
+                          "policy return entry%u reason=%u pc=%llx trap=%u",
+                          result.entries, unsigned(call.reason),
+                          (unsigned long long)state.rip,
+                          frame.SynchronousFaultData.TrapNo);
+            if (log)
+                log(stage);
             return call.reason;
         };
         auto fpu = [&]() {

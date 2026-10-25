@@ -44,7 +44,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.10-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.10.1-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -55,7 +55,14 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.10/code11**, adding an
+The user reports that phase0.10/code11 closes immediately when starting fixtures.
+Its native policy gate is **not accepted**. The
+[recovery revision](../../docs/devel/fex-hle/phase101.md) saves progress privately
+on the device. If the app closes, **reopen it and Share report before another
+run**; a new run overwrites the saved progress. No ADB is needed to share the
+journal. The cause remains unconfirmed; CPU tests and engine policy are retained.
+
+The current build is **phase0.10.1/code12**, adding an
 [opt-in reference instruction rejection subset](../../docs/devel/fex-hle/phase10.md).
 [Phase0.9 passes all 148 native checks](../../docs/devel/fex-hle/phase09-android-report.md)
 on Pocket S. The new cumulative expectation is **176 native PASS checks**:

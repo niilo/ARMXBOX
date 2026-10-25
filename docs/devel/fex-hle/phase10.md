@@ -1,5 +1,11 @@
 # Phase 0.10: opt-in reference instruction rejection subset
 
+**Native regression:** the user reports phase0.10/code11 closes immediately on
+starting fixtures. No device trace is available yet, and native acceptance is
+withheld. [Phase0.10.1](phase101.md) adds persistent progress recovery without
+changing the CPU cases or claiming an engine fix. Controlled XBE work remains
+gated on resolving this failure.
+
 The [Phase0.9 report](phase09-android-report.md) accepts all 148 native checks.
 This increment implements the first instruction-policy portion of the
 [Phase0.10 plan](phase10-plan.md). It does not implement virtual interrupts,

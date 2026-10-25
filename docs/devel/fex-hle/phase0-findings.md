@@ -189,7 +189,9 @@ selected newer forms; default instruction behavior is retained. Generated
 expected cases come from executed reference captures, including their SSE2
 permissiveness finding. The cumulative expectation is 154 cloud checks and 176
 native checks, including six ABI witnesses across 113 new entries. Native
-acceptance is pending; virtual IF/timers and broad instruction admission remain
+acceptance is withheld following an immediate device crash report. The
+[progress-recovery revision](phase101.md) adds durable stage logging; the cause
+is not yet confirmed. Virtual IF/timers and broad instruction admission remain
 open. This is not a game/FPS result.
 
 ## Acceptance and next autonomous work

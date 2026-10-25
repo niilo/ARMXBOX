@@ -40,6 +40,6 @@ PYZIP
 if [[ ! -f "$probe_out/probe-debug.keystore" ]]; then
   keytool -genkeypair -keystore "$probe_out/probe-debug.keystore" -storepass android -keypass android -alias probe -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=ARMXBOX Experimental Debug'
 fi
-"$build_tools/apksigner" sign --ks "$probe_out/probe-debug.keystore" --ks-pass pass:android --out "$probe_out/armxbox-fex-phase0.10-debug.apk" "$probe_out/aligned.apk"
-"$build_tools/apksigner" verify "$probe_out/armxbox-fex-phase0.10-debug.apk"
-"$build_tools/zipalign" -c -P 16 4 "$probe_out/armxbox-fex-phase0.10-debug.apk"
+"$build_tools/apksigner" sign --ks "$probe_out/probe-debug.keystore" --ks-pass pass:android --out "$probe_out/armxbox-fex-phase0.10.1-debug.apk" "$probe_out/aligned.apk"
+"$build_tools/apksigner" verify "$probe_out/armxbox-fex-phase0.10.1-debug.apk"
+"$build_tools/zipalign" -c -P 16 4 "$probe_out/armxbox-fex-phase0.10.1-debug.apk"

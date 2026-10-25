@@ -24,7 +24,9 @@ stop for constructed loops; the [Pocket S report](phase08-android-report.md)
 passes all 129 native checks. [Phase0.9](phase09.md) implements a constructed bounded exit-based bridge
 and callback diagnostic; the [Pocket S report](phase09-android-report.md)
 passes all 148 checks. [Phase0.10](phase10.md) adds an opt-in reference-backed
-instruction rejection subset; its 176 native checks are pending. The broader
+instruction rejection subset; the user reports an immediate native crash.
+Its gate remains unaccepted; [Phase0.10.1](phase101.md) adds recoverable progress
+so the device failure can be located. The broader
 [virtual-state plan](phase10-plan.md) remains open. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the
