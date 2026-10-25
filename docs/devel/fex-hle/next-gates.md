@@ -1,5 +1,9 @@
 # Remaining CPU embedding gates
 
+Current immediate gate: [Phase0.10.2 native rerun](phase102.md). The recovery
+journal locates a code-buffer protection failure; the targeted changes are not
+yet accepted on Pocket S. Controlled XBE work remains gated.
+
 These are findings from the pinned engine and the reference backend, not
 implemented features or performance results. The [Phase0.4.1 native report](phase041-android-report.md)
 accepts the scoped fault/word-MMIO increment. Broad HLE remains gated by the

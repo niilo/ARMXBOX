@@ -80,7 +80,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.10.1; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.10.2; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -130,7 +130,8 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
     "host hooks reject fixed mapping and unmap outside owned arena",
     "host hooks reject low guest mapping and unmap",
     "bounded arena rejects exhaustion and invalid lengths",
-    "bounded file mapping shares backing with ordinary host mapping"
+    "bounded file mapping shares backing with ordinary host mapping",
+    "bounded arena propagates failed OS mapping and remains reusable"
   };
   static_assert(std::size(arenaLabels) == armxbox::ArenaCheckCount);
   for (unsigned i = 0; i < arena.passed.size(); ++i) {

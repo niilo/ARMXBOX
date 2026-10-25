@@ -26,7 +26,9 @@ and callback diagnostic; the [Pocket S report](phase09-android-report.md)
 passes all 148 checks. [Phase0.10](phase10.md) adds an opt-in reference-backed
 instruction rejection subset; the user reports an immediate native crash.
 Its gate remains unaccepted; [Phase0.10.1](phase101.md) adds recoverable progress
-so the device failure can be located. The broader
+which located a code-buffer protection failure. [Phase0.10.2](phase102.md)
+fixes reproduced allocation error paths and reduces cold-test buffer pressure;
+a native rerun is required. The broader
 [virtual-state plan](phase10-plan.md) remains open. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the

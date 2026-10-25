@@ -1,0 +1,69 @@
+diff --git a/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp b/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp
+index eee502364..ea86123c9 100644
+--- a/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp
++++ b/FEXCore/Source/Interface/Core/SharedCodeBufferManager.cpp
+@@ -2,6 +2,8 @@
+ #include "Interface/Core/LookupCache.h"
+ #include "Interface/Core/SharedCodeBufferManager.h"
+ 
++#include <cerrno>
++
+ #include <FEXCore/fextl/memory.h>
+ #include <FEXCore/Utils/AllocatorHooks.h>
+ #include <FEXCore/Utils/LogManager.h>
+@@ -19,13 +21,20 @@ static constexpr size_t MAX_CODE_SIZE = 1024 * 1024 * 128;
+ CodeBuffer::CodeBuffer(size_t Size, bool ShouldBeNamed)
+   : AllocatedSize(Size) {
+   Ptr = static_cast<uint8_t*>(FEXCore::Allocator::VirtualAlloc(Size, true));
+-  LOGMAN_THROW_A_FMT(!!Ptr, "Couldn't allocate code buffer");
++  // Allocation/guard failures must stop even when debug assertions are disabled.
++  if (!Ptr || Ptr == reinterpret_cast<uint8_t*>(-1)) {
++    const int Error = errno;
++    LogMan::Throw::MFmt("Couldn't allocate code buffer: size={} errno={}", fmt::make_format_args(Size, Error));
++  }
+ 
+   // Protect the last page of the allocated buffer to trigger SIGSEGV on write access
+   uintptr_t LastPageAddr = AlignDown(reinterpret_cast<uintptr_t>(Ptr) + Size - 1, FEXCore::Utils::FEX_PAGE_SIZE);
+   if (!FEXCore::Allocator::VirtualProtect(reinterpret_cast<void*>(LastPageAddr), FEXCore::Utils::FEX_PAGE_SIZE,
+                                           FEXCore::Allocator::ProtectOptions::None)) {
+-    LogMan::Msg::EFmt("Failed to mprotect last page of code buffer.");
++    const int Error = errno;
++    const uintptr_t Base = reinterpret_cast<uintptr_t>(Ptr);
++    LogMan::Throw::MFmt("Failed to protect code-buffer guard: base={:x} size={} guard={:x} errno={}",
++                       fmt::make_format_args(Base, Size, LastPageAddr, Error));
+   }
+ 
+   if (ShouldBeNamed) {
+diff --git a/FEXCore/Source/Utils/Allocator.cpp b/FEXCore/Source/Utils/Allocator.cpp
+index a0ecd3a3f..b74ad20f8 100644
+--- a/FEXCore/Source/Utils/Allocator.cpp
++++ b/FEXCore/Source/Utils/Allocator.cpp
+@@ -69,7 +69,11 @@ static void* FEX_mmap(void* addr, size_t length, int prot, int flags, int fd, of
+   }
+   void* Result = (BoundedAlloc64 ? BoundedAlloc64 : Alloc64.get())->Mmap(addr, length, prot, flags, fd, offset);
+   if (Result >= (void*)-4096) {
+-    errno = -(uint64_t)Result;
++    const int Error = -(uint64_t)Result;
++    if (BoundedBegin) {
++      LogMan::Msg::EFmt("Bounded mmap failed: length={} prot={} flags={} fd={} errno={}", length, prot, flags, fd, Error);
++    }
++    errno = Error;
+     return (void*)-1;
+   }
+ 
+diff --git a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+index 20211d322..daa591d16 100644
+--- a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
++++ b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+@@ -378,8 +378,9 @@ again:
+           break;
+         }
+ 
+-        // Couldn't fit but mmap gave us an error
+-        if (!Fits.RegionInsertedInto && Fits.Ptr) {
++        // A failed OS mapping still identifies the region it tried. Propagate
++        // the error instead of returning its uncommitted candidate address.
++        if (Fits.Ptr) {
+           return Fits.Ptr;
+         }
+ 

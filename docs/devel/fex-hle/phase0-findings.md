@@ -217,3 +217,11 @@ performance gates from the proposal. Audio acceptance must measure underruns and
 callback timing; prior reference runs had slight crackling. Neither the working
 legacy GPU/audio code nor FEX's instruction throughput establishes a title FPS
 prediction for this architecture.
+
+## Phase0.10.2 allocation regression follow-up
+
+The recovery journal locates a code-buffer protection failure before policy
+entry 7; no native policy acceptance is inferred. [Phase0.10.2](phase102.md)
+fixes reproduced OS mapping and code-buffer failure handling and retains cold
+translation tests without repeatedly enlarging their JIT buffer. Native 177
+checks and 113 policy entries remain required before proceeding.

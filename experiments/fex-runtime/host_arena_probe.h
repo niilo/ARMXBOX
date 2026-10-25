@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 namespace armxbox {
-constexpr size_t ArenaCheckCount = 17;
+constexpr size_t ArenaCheckCount = 18;
 struct HostArenaResults {
     bool ready = false;
     uintptr_t base = 0;

@@ -205,7 +205,17 @@ InstructionPolicyResults runInstructionPolicyProbe(
                 size += 4;
             };
             if (!warm) {
-                context->ClearCodeCache(thread);
+                if (log) {
+                    char stage[160];
+                    std::snprintf(stage, sizeof stage,
+                                  "policy cold lookup reset case=%s scenario=%u",
+                                  test.name, scenario);
+                    log(stage);
+                }
+                // Clear all lookup levels, retaining the code-buffer capacity.
+                // The default overload recreates/doubles the whole JIT buffer;
+                // that is unnecessary for these tiny cold-translation cases.
+                context->ClearCodeCache(thread, false);
                 emit(0xb8);
                 imm(scenario == 0 ? 0xffffffffU :
                     scenario == 1 ? 0x7fffffffU :

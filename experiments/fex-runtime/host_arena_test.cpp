@@ -34,7 +34,7 @@ int main()
         failures += 2;
     }
     munmap(p, Size);
-    std::printf("%s host arena isolated process: 19 checks\n",
+    std::printf("%s host arena isolated process: 20 checks\n",
                 failures ? "FAIL" : "PASS");
     return failures ? 1 : 0;
 }

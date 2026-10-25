@@ -373,6 +373,16 @@ HostArenaResults prepareHostArena(uintptr_t guestCode,
 #ifdef VIXL_SIMULATOR
     result.passed[4] &= hostArenaAuditOK();
 #endif
+    stage("host arena: failed OS mapping and subsequent reuse control");
+    errno = 0;
+    void *bad = FEXCore::Allocator::mmap(
+        nullptr, Page, PROT_READ | PROT_WRITE, MAP_SHARED, -1, 0);
+    const bool osRejected = bad == MAP_FAILED && errno == EBADF;
+    // Never access a bogus success from the old allocator. Its candidate may
+    // still be PROT_NONE. A valid subsequent allocation verifies usable state.
+    if (bad != MAP_FAILED)
+        FEXCore::Allocator::munmap(bad, Page);
+    result.passed[17] = osRejected && boundedMapping(result.base, result.size);
     stage("host arena: setup controls finished");
     return result;
 }

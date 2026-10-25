@@ -1,5 +1,9 @@
 # Phase 0.10.1: recover progress after a native probe crash
 
+Update: the recovered device journal located a code-buffer protection failure.
+See [Phase0.10.2](phase102.md) for evidence and the pending native rerun.
+The description below records the initial recovery build.
+
 The user reports that phase0.10/code11 closes almost immediately after tapping
 Run CPU fixtures on Pocket S. No completion report or device crash trace is
 available yet. **Phase0.10 is not natively accepted**, despite passing its cloud
