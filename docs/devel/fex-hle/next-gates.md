@@ -85,7 +85,8 @@ sequence and source constraints. [Phase0.8](phase08.md) adds explicit instructio
 checkpoints, budgets and latched stop requests for constructed loops. The
 [Pocket S report](phase08-android-report.md) passes all 129 checks; the scoped
 contract is accepted. [Phase0.9](phase09.md) adds a constructed bounded exit-based bridge/callback
-diagnostic; native acceptance of its 148 cumulative checks is pending. Wider callback/fault/REP/runtime bounds are not established. Add a demonstrated bounded return mechanism
+diagnostic; the [Pocket S report](phase09-android-report.md) passes all 148
+cumulative checks. Next is the [instruction/virtual-state policy](phase10-plan.md). Wider callback/fault/REP/runtime bounds are not established. Add a demonstrated bounded return mechanism
 before accepting arbitrary guest
 entry points. Constructed terminating fixtures and the CI process timeout do not
 provide cancellation of a non-terminating native guest in an app process.

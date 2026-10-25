@@ -43,3 +43,50 @@ in the declared `PENTIUM3_FEATURES`. Leaf 1 ECX/EBX are zero. Hypervisor leaves
 `40000000` and `40000001` are zero. Other tested unsupported basic, extended and
 high-range inputs return the Xbox leaf-2 cache descriptors. Repeated ECX inputs
 including `ffffffff` do not change any captured leaf's outputs.
+
+## Instruction admission capture
+
+`xbox-instructions.json` records 12 selected instruction encodings, each executed
+twice under TCG in protected IA32 CPL0 mode, with flat segments and CR4 `0x600`
+(OSFXSR/OSXMMEXCPT). SSE/MMX-enabling CR0 setup and accepted SSE1/MMX/x87 controls
+avoid confusing missing OS state with unsupported instructions. A generated GDT
+and #UD/#GP/#PF handlers capture exception PC/error, sampled EAX/EDX/EFLAGS and
+whether the following sentinel ran. The tool requires the completion marker,
+CS32/CPL0/halt state, known controls, repeat consistency and normal process exit.
+It does not capture all registers or certify the whole ISA.
+
+| Tested form | Observed retained-reference result |
+| --- | --- |
+| SSE1 XORPS; MMX PXOR; x87 FLD1 | Executes |
+| SSE2 PXOR XMM (`66 0f ef c0`) | Executes despite absent CPUID SSE2 |
+| SSE3 HADDPS; SSSE3 PSHUFB; SSE4.1 PTEST; SSE4.2 PCMPGTQ | #UD |
+| AVX VZEROUPPER; RDTSCP; XGETBV; explicit UD2 | #UD |
+
+The SSE2 observation is a reference-emulator permissiveness finding. It is not
+physical Xbox/Pentium III evidence or a reason to declare SSE2 supported on Xbox.
+Likewise one tested form does not settle every prefix, operand or instruction
+in its family. Future policy must explicitly distinguish hardware architecture,
+reference compatibility and the runtime's admitted subset.
+
+The binary revision is again `a1aeac59eb417b07f9b72ac882511a675cd9e080`; the JSON
+records binary, ROM and assembly checksums. Its entire `target/i386` source tree
+and `hw/xbox/xbox.c` are byte-identical to this branch at the capture. Two fresh
+captures produce identical JSON and ROM checksums. A real-ROM negative control
+replacing UD2 with NOP fails the required trap-control check; corrupted result
+PC/sentinel/flags are separately rejected. Initial harness assembly/reset errors
+produced no accepted table and were corrected before this capture.
+
+Reproduce with GNU binutils (`as`, `ld`), Python and the retained desktop binary:
+
+```sh
+xvfb-run -a python3 experiments/fex-runtime/scripts/capture-xbox-instructions.py \
+  --binary /path/to/armxbox \
+  --reference-commit a1aeac59eb417b07f9b72ac882511a675cd9e080 \
+  --output /tmp/armxbox-instructions-new
+```
+
+Use a fresh output directory. No FEX-generated output or cloud-host CPUID supplies
+the expected outcomes. The script does not alter the production backend or APK.
+The capture establishes compatibility observations, not Android native execution,
+physical Xbox accuracy, game admission or performance. See the
+[next policy plan](../../../docs/devel/fex-hle/phase10-plan.md).

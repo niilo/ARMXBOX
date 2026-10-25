@@ -26,7 +26,9 @@ nested kernel callbacks. The host body is fixed, nonblocking arithmetic.
 
 The callback runs through a new controlled entry on the same stopped thread.
 The suspended architectural snapshot restores GPRs, canonical flags, SIMD/MMX/x87
-state (including x87 status/TOP), floating controls and segment/TLS state. Engine-owned lookup pointers,
+state (including x87 status/TOP), floating controls and segment/TLS state.
+The accepted fixtures use IF=1; the engine setter still forces the userspace IF
+value. Virtual IF=0 and privilege handling remain open. Engine-owned lookup pointers,
 inline headers, deferred-signal counters, native return-stack location, fault
 metadata and atomic execution-control fields are not restored from a snapshot.
 The next controlled entry clears previous generated fault metadata. A callback
@@ -68,8 +70,9 @@ request-to-join time, without claiming a universal bound.
 The new cumulative cloud expectation is **127 PASS checks** in both translation
 modes: all 111 inherited plus 16 bridge checks. The **phase0.9/code10** APK expects
 **148 native PASS checks**: all 129 accepted plus 16 common, two native callback
-stop/state checks and one ABI summary. Native acceptance is pending a Pocket S
-report. Host simulation cannot establish Android concurrency, ABI or timing.
+stop/state checks and one ABI summary. The [Pocket S report](phase09-android-report.md)
+passes all 148 checks, including all 27 bridge entries and native worker/state/ABI
+checks. Host simulation cannot establish Android concurrency, ABI or timing.
 
 ## Cloud validation
 
@@ -90,8 +93,10 @@ execution evidence. Correct sources pass after restoration.
 The NDK30 ARM64/API29 full core and diagnostic link. The local phase0.9/code10
 APK passes signature, two-library/system-dependency, notices and APK/ELF 16 KiB
 alignment verification. Runtime admission remains 4 KiB; alignment alone does
-not establish 16 KiB runtime support. Independent GitHub builds and the native
-Pocket S report remain separate verification steps.
+not establish 16 KiB runtime support. The [independent GitHub build](https://github.com/niilo/ARMXBOX/actions/runs/40170195755)
+passes both jobs; its downloaded APK and host reports were independently
+verified. The [Pocket S report](phase09-android-report.md) accepts all 148 native
+checks.
 
 ## Remaining gates
 

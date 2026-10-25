@@ -3,7 +3,8 @@
 The [Phase0.8 Pocket S report](phase08-android-report.md) accepts all 129 scoped
 native checks. Next extend that proven execution boundary to a constructed typed
 service and reverse callback before admitting a controlled XBE. The first constructed
-[diagnostic increment](phase09.md) is implemented; native acceptance is pending.
+[diagnostic increment](phase09.md) is implemented; the
+[Pocket S report](phase09-android-report.md) passes all 148 native checks.
 The broader contracts below remain a plan, not a general runtime or a performance
 result.
 

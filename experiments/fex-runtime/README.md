@@ -60,7 +60,10 @@ The current build is **phase0.9/code10**, adding the
 [Phase0.8 passes all 129 native checks](../../docs/devel/fex-hle/phase08-android-report.md)
 on Pocket S. The new cumulative expectation is **148 native PASS checks**:
 those 129, 16 common bridge checks, two native callback stop/state checks and
-an ABI summary across 27 bridge entries. Native Phase0.9 acceptance is pending.
+an ABI summary across 27 bridge entries. The
+[Pocket S report](../../docs/devel/fex-hle/phase09-android-report.md) passes all
+148 native checks. The [next increment](../../docs/devel/fex-hle/phase10-plan.md)
+addresses reference-backed instruction and virtual-state policy.
 The cloud expectation is 127 checks in both translation modes. The native report
 includes fixture-specific cooperative and callback request-to-join durations.
 No arbitrary XBE/game code, title FPS, general callback/raw-fault cancellation,
