@@ -41,7 +41,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.11-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.11.1-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -52,10 +52,12 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.11/code14**: a
+The current build is **phase0.11.1/code15**: a
 [strictly admitted generated XBE and one typed kernel import](../../docs/devel/fex-hle/phase11.md).
 Expect **193 native checks**, seven XBE entries, 113 instruction-policy entries
-and 27 bridge entries. Native Phase0.11 execution remains pending; complete cloud
+and 27 bridge entries. [Phase0.11 setup was blocked](../../docs/devel/fex-hle/phase11-android-report.md)
+on Pocket S. The [mapping follow-up](../../docs/devel/fex-hle/phase111.md) still
+requires native execution; complete cloud
 fixtures expect 170 checks in both modes. This is not retail XBE admission.
 
 [Phase0.10.2's Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md)

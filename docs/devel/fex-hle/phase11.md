@@ -1,5 +1,9 @@
 # Phase 0.11: a generated XBE with one typed kernel import
 
+Native update: [Pocket S setup was blocked before XBE entry](phase11-android-report.md).
+See [Phase0.11.1](phase111.md) for revised mapping and diagnosis. The original
+0x20000000 profile below records this earlier build; it is not natively accepted.
+
 [Phase0.10.2's Pocket S report](phase102-android-report.md) passes all 177
 expected checks and clears the preceding diagnostic crash for that run.
 This next increment loads and executes a strictly admitted, project-owned XBE.

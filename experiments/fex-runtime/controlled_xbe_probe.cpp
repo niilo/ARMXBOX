@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "controlled_xbe.h"
 #include "execution_boundary.h"
+#include "guest_reservation.h"
 #include <FEXCore/Core/HostFeatures.h>
 #include <FEXCore/Core/SignalDelegator.h>
 #include <FEXCore/HLE/SyscallHandler.h>
 #include <FEXCore/Utils/Allocator.h>
 #include <FEXCore/Utils/AllocatorHooks.h>
 #include <algorithm>
+#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -40,20 +42,17 @@ constexpr const char *Labels[] = {
 static_assert(std::size(Labels) == XbeCheckCount);
 void *reserve(uint32_t address, size_t size)
 {
-    void *p =
-        ::mmap(reinterpret_cast<void *>(uintptr_t(address)), size, PROT_NONE,
-               MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-    if (p == MAP_FAILED)
-        return nullptr;
-    if (reinterpret_cast<uintptr_t>(p) != address) {
-        ::munmap(p,
-                 size); // Older kernels may ignore NOREPLACE: never overwrite.
-        return nullptr;
-    }
-    return p;
+    return reserveGuestExact(address, size).address;
 }
 struct Loaded {
     void *image = nullptr, *stack = nullptr;
+    GuestReservation imageResult, stackResult;
+    const char *stage = "unstarted";
+    int protectionError = 0;
+    void (*log)(const char *) = nullptr;
+    explicit Loaded(void (*logger)(const char *) = nullptr) : log(logger)
+    {
+    }
     ~Loaded()
     {
         if (stack)
@@ -61,25 +60,109 @@ struct Loaded {
         if (image)
             ::munmap(image, XbeImageSize);
     }
+    void traceReservation(const char *name, uint32_t address, size_t size,
+                          const GuestReservation &r)
+    {
+        char text[224];
+        std::snprintf(text, sizeof text,
+                      "XBE %s reserve requested=%x size=%zu ok=%u "
+                      "noReplaceErr=%d hint=%u hintErr=%d alternate=%u",
+                      name, address, size, unsigned(r.address != nullptr),
+                      r.noReplaceError, r.usedHint, r.hintError, r.alternate);
+        if (log)
+            log(text);
+    }
+    bool protect(void *address, size_t size, int flags, const char *name)
+    {
+        stage = name;
+        if (!::mprotect(address, size, flags))
+            return true;
+        protectionError = errno;
+        char text[192];
+        std::snprintf(text, sizeof text,
+                      "XBE protection failed stage=%s address=%llx size=%zu "
+                      "prot=%d errno=%d",
+                      stage,
+                      (unsigned long long)reinterpret_cast<uintptr_t>(address),
+                      size, flags, protectionError);
+        if (log)
+            log(text);
+        return false;
+    }
     bool load(const GeneratedXbe &bytes, const XbePlan &plan)
     {
-        image = reserve(XbeBase, XbeImageSize);
+        stage = "image-reserve";
+        imageResult = reserveGuestExact(XbeBase, XbeImageSize);
+        image = imageResult.address;
+        traceReservation("image", XbeBase, XbeImageSize, imageResult);
         if (!image)
             return false;
-        stack = reserve(StackVA, 4 * Page);
-        if (!stack || ::mprotect(image, XbeImageSize, PROT_READ | PROT_WRITE) ||
-            ::mprotect(reinterpret_cast<void *>(uintptr_t(StackBegin)),
-                       2 * Page, PROT_READ | PROT_WRITE))
+        stage = "stack-reserve";
+        stackResult = reserveGuestExact(StackVA, 4 * Page);
+        stack = stackResult.address;
+        traceReservation("stack", StackVA, 4 * Page, stackResult);
+        if (!stack)
+            return false;
+        if (!protect(image, XbeImageSize, PROT_READ | PROT_WRITE, "image-RW") ||
+            !protect(reinterpret_cast<void *>(uintptr_t(StackBegin)), 2 * Page,
+                     PROT_READ | PROT_WRITE, "stack-RW"))
             return false;
         std::memcpy(image, bytes.data(), Page);
         for (unsigned i = 0; i < 2; ++i)
             std::memcpy(static_cast<uint8_t *>(image) + plan.virtualOffset[i],
                         bytes.data() + plan.rawOffset[i], plan.rawSize[i]);
-        // Guest instructions are data to the ARM host: guest RX text needs
-        // host read-only mapping, never permission to execute x86 on ARM.
-        return !::mprotect(image, 2 * Page, PROT_READ);
+        // Guest instructions are ARM-host data: guest RX text is host RO.
+        if (!protect(image, 2 * Page, PROT_READ, "header-text-RO"))
+            return false;
+        stage = "mapped";
+        return true;
+    }
+    void detail(char *text, size_t capacity, bool oldOverlap, bool dalvik) const
+    {
+        std::snprintf(
+            text, capacity,
+            "stage=%s image=%x stack=%x nrErr=%d/%d hint=%u/%u hintErr=%d/%d "
+            "protErr=%d old20000000Overlap=%u dalvik=%u",
+            stage, XbeBase, StackVA, imageResult.noReplaceError,
+            stackResult.noReplaceError, imageResult.usedHint,
+            stackResult.usedHint, imageResult.hintError, stackResult.hintError,
+            protectionError, oldOverlap, dalvik);
     }
 };
+// Report overlaps without changing protections or exposing mapped file paths.
+bool describeOldRange(void (*log)(const char *), bool &dalvik)
+{
+    FILE *f = std::fopen("/proc/self/maps", "r");
+    dalvik = false;
+    if (!f) {
+        if (log)
+            log("XBE old-range map inspection unavailable");
+        return false;
+    }
+    char line[512], flags[5];
+    unsigned long long begin, end;
+    unsigned overlaps = 0;
+    while (std::fgets(line, sizeof line, f)) {
+        if (std::sscanf(line, "%llx-%llx %4s", &begin, &end, flags) != 3 ||
+            begin >= 0x20004000ULL || end <= 0x20000000ULL)
+            continue;
+        dalvik |= std::strstr(line, "dalvik") != nullptr;
+        if (log && overlaps < 3) {
+            char text[160];
+            std::snprintf(text, sizeof text,
+                          "XBE previous range overlap begin=%llx end=%llx "
+                          "prot=%s dalvik=%u",
+                          begin, end, flags,
+                          unsigned(std::strstr(line, "dalvik") != nullptr));
+            log(text);
+        }
+        ++overlaps;
+    }
+    std::fclose(f);
+    if (log && !overlaps)
+        log("XBE previous range has no observed host mapping");
+    return overlaps != 0;
+}
 bool protection(uint32_t address, const char *wanted)
 {
     FILE *f = std::fopen("/proc/self/maps", "r");
@@ -194,11 +277,15 @@ runControlledXbeProbe(const FEXCore::HostFeatures &features,
     }
     if (log)
         log("XBE: reserving image and guarded stack");
-    Loaded loaded;
+    bool dalvik = false;
+    const bool oldOverlap = describeOldRange(log, dalvik);
+    Loaded loaded(log);
     result.passed[5] = loaded.load(bytes, plan);
+    loaded.detail(result.detail, sizeof result.detail, oldOverlap, dalvik);
     if (!result.passed[5]) {
-        std::snprintf(result.detail, sizeof result.detail,
-                      "exact low-VA image/stack mapping unavailable");
+        if (log)
+            log("XBE setup blocked; downstream execution checks are unmet "
+                "prerequisites");
         return result;
     }
     result.passed[6] =

@@ -23,10 +23,20 @@ bool zeros(std::span<const uint8_t> data, size_t begin, size_t end)
 }
 // Handwritten IA32: push fill, length, destination; call [kernel thunk];
 // load filled word, publish it to data, controlled HLT completion.
-constexpr uint8_t Text[] = { 0x6a, 0x5a, 0x6a, 0x20, 0x68, 0x00, 0x30,
-                             0x00, 0x20, 0xff, 0x15, 0x00, 0x20, 0x00,
-                             0x20, 0xa1, 0x00, 0x30, 0x00, 0x20, 0xa3,
-                             0x20, 0x20, 0x00, 0x20, 0xf4 };
+constexpr auto Text = [] {
+    std::array<uint8_t, 26> text{ 0x6a, 0x5a, 0x6a, 0x20, 0x68, 0, 0,    0,   0,
+                                  0xff, 0x15, 0,    0,    0,    0, 0xa1, 0,   0,
+                                  0,    0,    0xa3, 0,    0,    0, 0,    0xf4 };
+    auto imm = [&](unsigned offset, uint32_t address) {
+        for (unsigned i = 0; i < 4; ++i)
+            text[offset + i] = address >> (8 * i);
+    };
+    imm(5, XbeFill);
+    imm(11, XbeThunk);
+    imm(16, XbeFill);
+    imm(21, XbeThunk + 0x20);
+    return text;
+}();
 } // namespace
 GeneratedXbe generateControlledXbe()
 {
@@ -104,8 +114,8 @@ bool admitControlledXbe(std::span<const uint8_t> bytes, XbePlan &out)
     }
     // Only this bounded handwritten program and one terminated kernel thunk
     // are admitted. No arbitrary x86 bytes, TLS, libraries or extra services.
-    if (std::memcmp(bytes.data() + 0x1000, Text, sizeof Text) ||
-        !zeros(bytes, 0x1000 + sizeof Text, 0x1100) || bytes[0x1100] != 0xf4 ||
+    if (std::memcmp(bytes.data() + 0x1000, Text.data(), Text.size()) ||
+        !zeros(bytes, 0x1000 + Text.size(), 0x1100) || bytes[0x1100] != 0xf4 ||
         !zeros(bytes, 0x1101, 0x2000) ||
         read(bytes, 0x2000) != (0x80000000U | Ordinal) ||
         !zeros(bytes, 0x2004, 0x3000))

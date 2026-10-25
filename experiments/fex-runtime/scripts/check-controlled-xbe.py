@@ -14,15 +14,15 @@ args = parser.parse_args()
 data = args.image.read_bytes()
 assert len(data) == 12288 and data[:4] == b'XBEH'
 word = lambda offset: struct.unpack_from('<I', data, offset)[0]
-assert word(0x104) == 0x20000000 and word(0x108) == 4096
+assert word(0x104) == 0x00010000 and word(0x108) == 4096
 assert word(0x10c) == 16384 and word(0x110) == 376
-assert word(0x118) == 0x20000300 and word(0x300) == 464
-assert word(0x11c) == 2 and word(0x120) == 0x20000180
-assert word(0x128) ^ 0xa8fc57ab == 0x20001000
-assert word(0x158) ^ 0x5b6d40b6 == 0x20002000
+assert word(0x118) == 0x00010300 and word(0x300) == 464
+assert word(0x11c) == 2 and word(0x120) == 0x00010180
+assert word(0x128) ^ 0xa8fc57ab == 0x00011000
+assert word(0x158) ^ 0x5b6d40b6 == 0x00012000
 assert word(0x2000) == 0x8000011c and word(0x2004) == 0
-for offset, expected in [(0x180, (6, 0x20001000, 4096, 4096, 4096)),
-                         (0x1b8, (3, 0x20002000, 8192, 8192, 4096))]:
+for offset, expected in [(0x180, (6, 0x00011000, 4096, 4096, 4096)),
+                         (0x1b8, (3, 0x00012000, 8192, 8192, 4096))]:
     assert struct.unpack_from('<5I', data, offset) == expected
 with tempfile.TemporaryDirectory(prefix='armxbox-xbe-asm-') as directory:
     root = Path(directory)
@@ -31,10 +31,10 @@ with tempfile.TemporaryDirectory(prefix='armxbox-xbe-asm-') as directory:
 .text
 pushl $0x5a
 pushl $32
-pushl $0x20003000
-call *0x20002000
-movl 0x20003000, %eax
-movl %eax, 0x20002020
+pushl $0x00013000
+call *0x00012000
+movl 0x00013000, %eax
+movl %eax, 0x00012020
 hlt
 ''')
     subprocess.run(['as', '--32', str(source), '-o', str(root / 'fixture.o')], check=True)

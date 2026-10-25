@@ -12,7 +12,7 @@ class SyscallHandler;
 namespace armxbox {
 // Only the project-owned, unsigned generated profile is admitted. This is not
 // a retail XBE loader or signature/authentication implementation.
-constexpr uint32_t XbeBase = 0x20000000;
+constexpr uint32_t XbeBase = 0x00010000;
 constexpr uint32_t XbeImageSize = 0x4000;
 constexpr uint32_t XbeEntry = XbeBase + 0x1000;
 constexpr uint32_t XbeImportStub = XbeBase + 0x1100;
