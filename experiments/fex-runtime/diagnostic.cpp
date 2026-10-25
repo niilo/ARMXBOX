@@ -77,7 +77,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.8; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.9; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -519,6 +519,21 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   report.line("UNVERIFIED concurrent native cooperative stop and ABI: run Android ARM64 APK\n");
 #endif
   if (controlled.detail[0]) report.line("Execution control detail: %s\n", controlled.detail);
+  for (unsigned i=0; i<controlled.bridge.passed.size(); ++i) {
+    report.check(armxbox::boundedBridgeCheckLabel(i), controlled.bridge.passed[i]);
+  }
+#ifdef __ANDROID__
+  report.check("native reverse callback stops after guest progress without caller completion", controlled.bridge.native[0]);
+  report.check("native callback stop remains latched after returning to host dispatch", controlled.bridge.native[1]);
+  report.check("bounded bridge entries preserve all six native ABI witnesses",
+      controlled.bridge.entries == 27 && controlled.bridge.abiMask == 0x3f);
+  report.line("Observed callback stop and join: %llu us (fixture-specific); bridge entries=%u\n",
+      (unsigned long long)controlled.bridge.stopLatencyUs, controlled.bridge.entries);
+#else
+  report.line("UNVERIFIED concurrent native callback stop and ABI: run Android ARM64 APK\n");
+#endif
+  report.line("Bounded bridge controlled entries: %u\n", controlled.bridge.entries);
+  if (controlled.bridge.detail[0]) report.line("Bounded bridge detail: %s\n", controlled.bridge.detail);
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
   report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);

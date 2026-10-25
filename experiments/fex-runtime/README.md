@@ -44,7 +44,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.8-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.9-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -55,17 +55,16 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.8/code9**, adding
-[opt-in instruction checkpoints and cooperative stop](../../docs/devel/fex-hle/phase08.md).
-[Phase0.7 passes all 109 checks](../../docs/devel/fex-hle/phase07-android-report.md)
-on Pocket S. The new cumulative native expectation is **129 PASS checks**:
-those 109, 15 common execution-control checks, four native stop/state checks
-and an ABI summary across 19 controlled calls. The
-[Pocket S report](../../docs/devel/fex-hle/phase08-android-report.md) passes all
-129 checks. Next is the [bounded bridge increment](../../docs/devel/fex-hle/phase09-plan.md).
-The report includes two fixture-specific request-to-join durations. These
-constructed checkpoint tests do not admit arbitrary XBE/game code or establish
-FPS, callback/raw-fault cancellation, timer/privilege policy or 16 KiB support.
+The current build is **phase0.9/code10**, adding the
+[bounded typed bridge and reverse callback diagnostic](../../docs/devel/fex-hle/phase09.md).
+[Phase0.8 passes all 129 native checks](../../docs/devel/fex-hle/phase08-android-report.md)
+on Pocket S. The new cumulative expectation is **148 native PASS checks**:
+those 129, 16 common bridge checks, two native callback stop/state checks and
+an ABI summary across 27 bridge entries. Native Phase0.9 acceptance is pending.
+The cloud expectation is 127 checks in both translation modes. The native report
+includes fixture-specific cooperative and callback request-to-join durations.
+No arbitrary XBE/game code, title FPS, general callback/raw-fault cancellation,
+timer/privilege policy or 16 KiB support is established.
 
 The bounded arena reserves 2 GiB of virtual capacity, not physical memory.
 [Phase0.5's Pocket S report](../../docs/devel/fex-hle/phase05-android-report.md)

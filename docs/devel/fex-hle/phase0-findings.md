@@ -170,6 +170,16 @@ including worker-stop/state publication and ABI evidence. General
 callback/fault/REP/runtime latency, instruction/privilege/timer and memory gates
 remain open; this is not game/FPS evidence.
 
+## Phase0.9 bounded bridge diagnostic
+
+[Phase0.9](phase09.md) composes finite controlled entry with a typed fixed-frame
+service and a reverse callback. It restores architectural state without copying
+engine-owned atomics/cache pointers, and discards the diagnostic shadow-return
+cache at callback boundaries. Sixteen common checks extend the cloud expectation
+to 127; native acceptance is pending for the 148-check cumulative report,
+including callback worker stop/state and six ABI witnesses across 27 entries.
+This remains a constructed subset, not broad kernel HLE or title performance.
+
 ## Acceptance and next autonomous work
 
 | Gate | Evidence | Status |

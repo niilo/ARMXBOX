@@ -2,8 +2,10 @@
 
 The [Phase0.8 Pocket S report](phase08-android-report.md) accepts all 129 scoped
 native checks. Next extend that proven execution boundary to a constructed typed
-service and reverse callback before admitting a controlled XBE. This is a plan,
-not an implemented runtime or a performance result.
+service and reverse callback before admitting a controlled XBE. The first constructed
+[diagnostic increment](phase09.md) is implemented; native acceptance is pending.
+The broader contracts below remain a plan, not a general runtime or a performance
+result.
 
 ## Source findings and design
 
@@ -71,9 +73,10 @@ idle reset. Define abort/reset ownership before allowing another invocation.
    without running an unbounded body. Run inherited reference/policy suites and
    APK signature/library/alignment checks before publishing a new device probe.
 
-Record expected native check identities/count only after the fixtures exist.
+The implemented fixture adds 16 common checks and three native checks, for a
+cumulative expectation of 148 native PASS checks.
 A native report is needed for the combined worker/callback/ABI contract; cloud
-simulation alone does not satisfy it. No new APK is supplied by this plan.
+simulation alone does not satisfy it. The phase0.9/code10 diagnostic is the device probe for this increment.
 
 ## Subsequent gates
 

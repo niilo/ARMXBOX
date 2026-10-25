@@ -37,37 +37,6 @@ constexpr const char *Labels[] = {
     "checkpoint preserves MMX data and EMMS tag state across resume",
 };
 static_assert(std::size(Labels) == ExecutionCheckCount);
-struct Invocation {
-    Context *context;
-    uint64_t budget;
-    Reason reason = Reason::Unsupported;
-};
-uint64_t enter(Invocation &call, Thread *thread)
-{
-#ifdef __aarch64__
-    uint64_t checks[6]{};
-    armxbox_probe_execute_abi(
-        &call, thread,
-        [](void *opaque, void *cpu) {
-            auto &call = *static_cast<Invocation *>(opaque);
-            uint64_t fpcr, fpsr;
-            asm volatile("mrs %0, fpcr\n mrs %1, fpsr"
-                         : "=r"(fpcr), "=r"(fpsr)::"memory");
-            call.reason = call.context->ExecuteControlledThread(
-                static_cast<Thread *>(cpu), call.budget);
-            asm volatile("msr fpcr, %0\n msr fpsr, %1" ::"r"(fpcr), "r"(fpsr)
-                         : "memory");
-        },
-        checks);
-    uint64_t mask = 0;
-    for (unsigned i = 0; i < 6; ++i)
-        mask |= uint64_t(checks[i] != 0) << i;
-    return mask;
-#else
-    call.reason = call.context->ExecuteControlledThread(thread, call.budget);
-    return 0;
-#endif
-}
 } // namespace
 const char *executionCheckLabel(unsigned i)
 {
@@ -158,8 +127,8 @@ ExecutionControlResults runExecutionControlProbe(
                       (unsigned long long)state.rip);
         if (log)
             log(stage);
-        Invocation call{ context.get(), budget };
-        result.abiMask &= enter(call, thread);
+        ControlledInvocation call{ context.get(), budget };
+        result.abiMask &= executeControlledGuest(call, thread);
         ++result.entries;
         std::snprintf(stage, sizeof stage,
                       "control return %u reason=%u remaining=%llu pc=%llx",
@@ -305,11 +274,11 @@ ExecutionControlResults runExecutionControlProbe(
             FEXCore::Allocator::UninstallTLSData(thread);
             std::array<uint64_t, 8> before{};
             std::memcpy(before.data(), state.gregs, sizeof before);
-            Invocation call{ context.get(), 10000000 };
+            ControlledInvocation call{ context.get(), 10000000 };
             uint64_t mask = 0;
             std::thread worker([&] {
                 FEXCore::Allocator::RegisterTLSData(thread);
-                mask = enter(call, thread);
+                mask = executeControlledGuest(call, thread);
                 FEXCore::Allocator::UninstallTLSData(thread);
             });
             const auto deadline =
@@ -356,6 +325,10 @@ ExecutionControlResults runExecutionControlProbe(
                 context->ResetStopRequest(thread);
         }
 #endif
+    }
+    if (result.passed[2] && result.passed[3]) {
+        result.bridge = runBoundedBridgeProbe(context.get(), thread, code, data,
+                                              stack, log);
     }
     FEXCore::Allocator::UninstallTLSData(thread);
     context->DestroyThread(thread);

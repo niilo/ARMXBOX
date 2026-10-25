@@ -1,4 +1,5 @@
 #pragma once
+#include "bounded_bridge_probe.h"
 #include <array>
 #include <cstdint>
 namespace FEXCore {
@@ -16,6 +17,7 @@ struct ExecutionControlResults {
     unsigned entries = 0;
     uint64_t stopLatencyUs[2]{};
     char detail[512]{};
+    BoundedBridgeResults bridge;
 };
 const char *executionCheckLabel(unsigned);
 ExecutionControlResults runExecutionControlProbe(const FEXCore::HostFeatures &,
