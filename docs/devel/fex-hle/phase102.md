@@ -1,5 +1,10 @@
 # Phase 0.10.2: code allocation failure checks and bounded cold tests
 
+Native acceptance update: [Phase0.10.2 Pocket S report](phase102-android-report.md)
+passes all 177 checks and 113 policy entries. The earlier pending descriptions
+below record the pre-test state; the scoped diagnostic regression is cleared
+for this run. [Phase0.11](phase11.md) is the next native gate.
+
 The Pocket S recovery journal from phase0.10.1/code12 contains 146 PASS lines,
 including the inherited CPU, native ABI, privileged-exit, controlled-execution
 and bounded callback checks. All six native ABI witnesses passed in those

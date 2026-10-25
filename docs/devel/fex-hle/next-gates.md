@@ -1,7 +1,7 @@
 # Remaining CPU embedding gates
 
-Current immediate milestone: a generated controlled XBE and minimal typed
-import. [Phase0.10.2 native acceptance](phase102-android-report.md) passes all
+Current immediate gate: [Phase0.11 generated XBE native execution](phase11.md)
+with 193 checks and seven image entries. [Phase0.10.2 native acceptance](phase102-android-report.md) passes all
 177 checks and 113 policy entries, clearing the diagnostic regression for this
 run. Broader retail/runtime admission remains gated by the contracts below.
 

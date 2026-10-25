@@ -1,5 +1,10 @@
 # Phase 0.10: opt-in reference instruction rejection subset
 
+Native acceptance update: [Phase0.10.2 Pocket S report](phase102-android-report.md)
+passes all 177 checks and 113 policy entries. The earlier pending descriptions
+below record the pre-test state; the scoped diagnostic regression is cleared
+for this run. [Phase0.11](phase11.md) is the next native gate.
+
 **Native regression:** the user reports phase0.10/code11 closes immediately on
 starting fixtures. No device trace is available yet, and native acceptance is
 withheld. [Phase0.10.1](phase101.md) adds persistent progress recovery without

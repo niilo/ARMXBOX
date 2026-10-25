@@ -30,7 +30,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest armxbox_abi_witness_test armxbox_division_native_test armxbox_fault_policy_test armxbox_host_arena_test armxbox_trace_test armxbox_code_buffer_test -j 2
+          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest armxbox_abi_witness_test armxbox_division_native_test armxbox_fault_policy_test armxbox_host_arena_test armxbox_trace_test armxbox_code_buffer_test armxbox_xbe_image_test -j 2
+          timeout 30s "$RUNNER_TEMP/fex-host/armxbox_xbe_image_test" "$RUNNER_TEMP/generated-controlled.xbe" | tee "$RUNNER_TEMP/fex-xbe-image.txt"
+          python3 experiments/fex-runtime/scripts/check-controlled-xbe.py "$RUNNER_TEMP/generated-controlled.xbe" | tee "$RUNNER_TEMP/fex-xbe-reference.txt"
           timeout 30s "$RUNNER_TEMP/fex-host/armxbox_code_buffer_test" | tee "$RUNNER_TEMP/fex-code-buffer.txt"
           timeout 30s "$RUNNER_TEMP/fex-host/armxbox_trace_test" | tee "$RUNNER_TEMP/fex-trace.txt"
           timeout 30s "$RUNNER_TEMP/fex-host/armxbox_abi_witness_test" "$RUNNER_TEMP/fex-host/abi_witness.bin" | tee "$RUNNER_TEMP/fex-abi-witness.txt"
@@ -61,6 +63,9 @@ jobs:
         with:
           name: fex-phase0-host-report
           path: |
+            ${{ runner.temp }}/fex-xbe-image.txt
+            ${{ runner.temp }}/fex-xbe-reference.txt
+            ${{ runner.temp }}/generated-controlled.xbe
             ${{ runner.temp }}/fex-code-buffer.txt
             ${{ runner.temp }}/fex-trace.txt
             ${{ runner.temp }}/fex-fixtures.txt
@@ -106,9 +111,9 @@ jobs:
         run: bash experiments/fex-runtime/scripts/package-apk.sh "$RUNNER_TEMP/fex-android" "$RUNNER_TEMP/fex-apk"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: armxbox-fex-phase0.10.2-debug
+          name: armxbox-fex-phase0.11-debug
           path: |
-            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.10.2-debug.apk
+            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.11-debug.apk
             ${{ runner.temp }}/fex-apk/assets/THIRD_PARTY_NOTICES
           if-no-files-found: error
           retention-days: 30

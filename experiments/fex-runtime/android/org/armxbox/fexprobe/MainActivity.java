@@ -61,7 +61,7 @@ public final class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(24, 48, 24, 24);
         TextView title = new TextView(this);
-        title.setText("ARMXBOX FEX Probe • phase0.10.2\nCPU diagnostics only • no game support\n");
+        title.setText("ARMXBOX FEX Probe • phase0.11\nCPU diagnostics only • no game support\n");
         layout.addView(title);
         TextView output = new TextView(this);
         output.setTextIsSelectable(true);
@@ -87,7 +87,7 @@ public final class MainActivity extends Activity {
             output.setText(report);
             new Thread(() -> {
                 try {
-                    write(traceFile(), device() + "ARMXBOX FEX phase0.10.2/code13\nJava: loading native library\n", false);
+                    write(traceFile(), device() + "ARMXBOX FEX phase0.11/code14\nJava: loading native library\n", false);
                     System.loadLibrary("armxbox_fex_diagnostic");
                     write(traceFile(), "Java: library loaded; entering JNI\n", true);
                     report = device() + runProbe(traceFile().getAbsolutePath());

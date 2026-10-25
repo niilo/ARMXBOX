@@ -1,5 +1,8 @@
 # ARMXBOX FEX Phase 0 probe
 
+An isolated CPU/embedding and generated-XBE diagnostic. Production ARMXBOX
+does not depend on this directory. It runs project-owned fixtures, measures no
+title FPS and does not admit retail games. VIXL timings are not device timings.
 
 ## Build and run
 
@@ -38,7 +41,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.10.2-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.11-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -49,14 +52,16 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.10.2/code13**. Its
-[Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md) passes all
-**177 native checks and 113 policy entries**, clearing the earlier diagnostic
-crash for this run. The earlier allocation cause was not individually isolated.
-Cloud fixtures pass 155 checks in both modes. Controlled generated XBE work is
-next; virtual IF/clocks, general memory/atomic/REP/helper/fault bounds and retail
-admission remain open. The [reference instruction subset](../../docs/devel/fex-hle/phase10.md)
-is not a complete Xbox ISA allowlist.
+The current build is **phase0.11/code14**: a
+[strictly admitted generated XBE and one typed kernel import](../../docs/devel/fex-hle/phase11.md).
+Expect **193 native checks**, seven XBE entries, 113 instruction-policy entries
+and 27 bridge entries. Native Phase0.11 execution remains pending; complete cloud
+fixtures expect 170 checks in both modes. This is not retail XBE admission.
+
+[Phase0.10.2's Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md)
+passes all 177 prior native checks, clearing the diagnostic crash for that run.
+The earlier allocation cause was not individually isolated. Virtual IF/clocks,
+general memory/atomic/REP/helper/fault bounds and retail execution remain open.
 
 If a later diagnostic closes, **reopen it and Share report before another run**;
 a new run overwrites saved progress. No ADB is needed.
