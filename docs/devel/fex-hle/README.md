@@ -36,7 +36,9 @@ is the [graphics/PCM ownership and integration plan](phase12-plan.md).
 182 simulator checks pass and the [Pocket S report](phase12a-android-report.md)
 passes all 206 expected native checks. [Phase0.12b](phase12b.md) adds a separate
 cloud Vulkan consumer with pixel verification and now connects it to native guest
-packets in code17; the 213-check device gate is pending. The broader
+packets in code17; its [Pocket S report](phase12b-android-report.md) passes all 213
+expected native checks. [Phase0.12c](phase12c.md) adds explicit finite AAudio playback;
+its native PCM gate is pending. The broader
 [virtual-state plan](phase10-plan.md) remains open. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the

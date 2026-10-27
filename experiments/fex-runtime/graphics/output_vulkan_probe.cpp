@@ -3,6 +3,9 @@
 #include "output_packet.h"
 #include "output_vulkan.h"
 #include "output_spirv.h"
+#ifdef __ANDROID__
+#include "audio/pcm_sink.h"
+#endif
 #include <bit>
 #include <cstdio>
 #include <exception>
@@ -69,6 +72,18 @@ struct Session {
         const auto pixels = gpu->render(packet);
         out.passed[2 + index] = outputPixelMismatches(pixels, packet) == 0;
         if (!index) {
+#ifdef __ANDROID__
+            // Copy accepted PCM into the independent playback session before
+            // this immutable packet lease retires. Playback stays
+            // user-triggered.
+            if (out.passed[2]) {
+                const bool captured = publishPcm(packet.pcm());
+                if (log)
+                    log(captured ? "PCM: accepted guest snapshot copied for "
+                                   "explicit playback" :
+                                   "PCM: guest snapshot capture unavailable");
+            }
+#endif
             first = pixels;
             return;
         }

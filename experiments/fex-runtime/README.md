@@ -41,7 +41,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.12b-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.12c-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -52,22 +52,23 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.12b/code17**: [native guest packet to offscreen Vulkan](../../docs/devel/fex-hle/phase12b.md).
-Tap **Run CPU + GPU fixtures**, then **Share report**. Native acceptance is pending:
-expect **213 checks** (all 206 prior CPU identities plus seven GPU checks), four
-output entries, seven Fill XBE entries, 113 policy entries and 27 native bridge
-entries. This probe uses Android's system Vulkan loader and reports the actual
-driver; it does not inherit production's custom Turnip selection. There is no
-surface presentation or PCM playback. A valid native report must show both cold
-and warm pixel checks and explicit cleanup passing.
+The current build is **phase0.12c/code18**: [explicit finite PCM playback](../../docs/devel/fex-hle/phase12c.md).
+Run **CPU + GPU fixtures**, then **Play 0.5s PCM test**. Wait for the audio result
+before **Share report**. Expected: all **213 CPU/GPU checks** plus **ten separate
+PCM checks** (223 PASS identities combined). Native PCM acceptance is pending.
+The brief 3 kHz diagnostic sawtooth repeats the accepted guest seed; it is not
+game audio. Nothing plays automatically. Stop or leaving the foreground cancels
+playback. Also report whether you heard the tone; counters alone cannot prove it.
 
-[Phase0.12a's Pocket S report](../../docs/devel/fex-hle/phase12a-android-report.md)
-passes all 206 expected CPU checks and remains the accepted device baseline.
-Default cloud CPU runs pass 182 checks in normal, single-block and forced hint-only
-modes. Optional `-DARMXBOX_HOST_OUTPUT_VULKAN=ON` adds the seven GPU checks for
-189 host outcomes; it requires Vulkan headers/loader, a driver and shader tools.
-The independent [graphics suite](graphics/README.md) additionally checks validated
-rendering, wrong shaders and bridge exception/failure handling.
+[Phase0.12b's Pocket S report](../../docs/devel/fex-hle/phase12b-android-report.md)
+passes all 213 expected checks and remains the accepted native baseline. It uses
+Android's system Vulkan loader (Adreno 740, API1.3.128 in that run), not production's
+custom Turnip loading. There is no surface presentation or retail execution.
+Default cloud CPU runs remain 182 checks in normal, single-block and forced hint
+modes; optional `-DARMXBOX_HOST_OUTPUT_VULKAN=ON` adds seven for 189 host outcomes.
+The [graphics suite](graphics/README.md) retains validated rendering and failure
+controls; the separate audio CMake project tests the finite source/controller
+without an Android audio endpoint.
 
 [Phase0.10.2's Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md)
 passes all 177 prior native checks, clearing the diagnostic crash for that run.

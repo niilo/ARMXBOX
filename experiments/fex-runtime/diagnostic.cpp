@@ -11,6 +11,7 @@
 #include "host_arena_probe.h"
 #ifdef __ANDROID__
 #include "raw_fault_probe.h"
+#include "audio/pcm_sink.h"
 #endif
 #ifdef ARMXBOX_OUTPUT_VULKAN_PROBE
 #include "graphics/output_vulkan_probe.h"
@@ -85,7 +86,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.12b; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.12c; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -587,7 +588,10 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   for (unsigned i = 0; i < gpuOutput.passed.size(); ++i)
     report.check(armxbox::outputGpuCheckLabel(i), gpuOutput.passed[i]);
   if (gpuOutput.detail[0]) report.line("Vulkan detail: %s\n", gpuOutput.detail);
-  report.line("GPU path: system Vulkan loader; offscreen readback; validation disabled; no surface or PCM playback\n");
+  report.line("GPU path: system Vulkan loader; offscreen readback; validation disabled; no surface presentation\n");
+#ifdef __ANDROID__
+  report.line("PCM guest snapshot: %s; playback requires Play PCM test\n", armxbox::pcmReady() ? "ready" : "unavailable");
+#endif
 #endif
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);

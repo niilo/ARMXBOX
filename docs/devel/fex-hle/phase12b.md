@@ -5,7 +5,7 @@ checks. This step adds an independent explicit Vulkan consumer under
 `experiments/fex-runtime/graphics`, outside the FEX and production build graphs.
 It consumes owned OutputPacket snapshots, renders a 64x64 textured triangle,
 and verifies pixels through readback. The phase0.12b/code17 candidate now connects
-this consumer to the accepted guest producer; its native GPU acceptance is pending.
+this consumer to the accepted guest producer; the [Pocket S report](phase12b-android-report.md) passes all 213 expected checks.
 
 ## Implemented path
 
@@ -75,7 +75,7 @@ on the actual driver. Explicit resource cleanup completes before the second
 callback returns and its guest packet lease retires. No borrowed packet or guest
 pointer is retained across callbacks.
 
-**Expected native result: 213 unique PASS checks**: retain all 206 accepted CPU
+**Accepted native result: 213 unique PASS checks**: retain all 206 accepted CPU
 identities and add seven GPU checks for packet delivery, initialization, cold/warm
 pixel results, identical canonical repeat, the asymmetric host control and explicit
 cleanup. Four guest output entries, seven Fill XBE entries, 113 policy entries and
@@ -93,8 +93,8 @@ remain 182 checks in all three modes; the Android candidate compiles GPU support
 
 ## Next milestone and limits
 
-The code17 device report is needed to accept native driver initialization, guest
-packet rendering and cleanup. Cloud software-driver success does not establish
+The [code17 device report](phase12b-android-report.md) accepts scoped native driver
+initialization, guest packet rendering and cleanup. Cloud software-driver success does not establish
 Pocket S behavior. Driver hangs can still block final device-idle cleanup; the
 three-second fence waits do not establish bounded driver teardown. If the app
 closes or hangs, reopen and share the saved progress before rerunning.

@@ -114,3 +114,8 @@ successful fixture count establishes a title FPS improvement.
 [Phase0.12a](phase12a.md) implements the guest graphics/PCM packet boundary.
 Its [206-check native report](phase12a-android-report.md) accepts the scoped handoff. Offscreen rendering, presentation and PCM
 playback remain the next integration work; no title performance is established.
+
+[Phase0.12b native acceptance](phase12b-android-report.md) passes all 213 expected
+checks, including guest-produced packet rendering on system-loaded Adreno 740.
+Next are explicit PCM playback/lifecycle and surface presentation; no retail
+checkpoint or FPS improvement is established.

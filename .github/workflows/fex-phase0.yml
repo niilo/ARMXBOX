@@ -7,6 +7,25 @@ on:
 permissions:
   contents: read
 jobs:
+  pcm-fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Test bounded PCM callback source and controller
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S experiments/fex-runtime/audio -B "$RUNNER_TEMP/fex-audio" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/fex-audio" -j 2
+          ctest --test-dir "$RUNNER_TEMP/fex-audio" --no-tests=error --verbose --output-on-failure | tee "$RUNNER_TEMP/fex-pcm-fixtures.txt"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fex-pcm-host-report
+          path: ${{ runner.temp }}/fex-pcm-fixtures.txt
+          if-no-files-found: error
   cpu-fixtures:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -118,7 +137,7 @@ jobs:
             ${{ runner.temp }}/fex-*-backtrace.txt
           if-no-files-found: ignore
   android-diagnostic:
-    needs: cpu-fixtures
+    needs: [cpu-fixtures, pcm-fixtures]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -155,9 +174,9 @@ jobs:
         run: bash experiments/fex-runtime/scripts/package-apk.sh "$RUNNER_TEMP/fex-android" "$RUNNER_TEMP/fex-apk"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: armxbox-fex-phase0.12b-debug
+          name: armxbox-fex-phase0.12c-debug
           path: |
-            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.12b-debug.apk
+            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.12c-debug.apk
             ${{ runner.temp }}/fex-apk/assets/THIRD_PARTY_NOTICES
           if-no-files-found: error
           retention-days: 30
