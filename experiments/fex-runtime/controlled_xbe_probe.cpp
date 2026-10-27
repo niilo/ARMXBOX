@@ -531,7 +531,8 @@ const char *outputProbeCheckLabel(unsigned i)
 }
 OutputProbeResults runOutputProbe(const FEXCore::HostFeatures &features,
                                   FEXCore::HLE::SyscallHandler *calls,
-                                  void (*log)(const char *))
+                                  void (*log)(const char *),
+                                  OutputPacketConsumer consume, void *consumer)
 {
     OutputProbeResults result;
     OutputQueue queue;
@@ -750,12 +751,19 @@ OutputProbeResults runOutputProbe(const FEXCore::HostFeatures &features,
             std::memset(replacement, 0x39, XbeImageSize);
             const auto *p = queue.get(first);
             result.passed[10] = p && outputMatches(*p, 1);
+            // Borrow remains valid until retirement. The synchronous consumer
+            // must finish all packet reads before returning; no guest mapping
+            // or guest pointer survives this ownership boundary.
+            if (result.passed[10] && consume)
+                consume(*p, 0, consumer);
         }
         if (replacement)
             ::munmap(replacement, XbeImageSize);
         const bool retired = queue.retire(first) && !queue.get(first);
         const auto second = queue.acquire();
         const auto *p = queue.get(second);
+        if (retired && p && outputMatches(*p, 2) && consume)
+            consume(*p, 1, consumer);
         result.passed[11] = retired && p && outputMatches(*p, 2) &&
                             queue.retire(second) && !queue.get(second) &&
                             queue.reset(2) &&

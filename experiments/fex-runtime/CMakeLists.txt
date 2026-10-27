@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(ARMXBOXFexProbe LANGUAGES C CXX ASM)
 # Intentionally separate from the production Android C++17 build.
 option(ARMXBOX_HOST_SIMULATOR "Run generated ARM64 under VIXL on x86-64 Linux (not device proof)" OFF)
+option(ARMXBOX_HOST_OUTPUT_VULKAN "Connect simulator guest output to software Vulkan (not device proof)" OFF)
 if(ARMXBOX_HOST_SIMULATOR AND (ANDROID OR NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$"))
   message(FATAL_ERROR "Host simulation requires x86-64 Linux; use the Android target for native ARM64")
 endif()
@@ -87,6 +88,49 @@ target_include_directories(armxbox_fex_diagnostic PRIVATE "${FEX_SOURCE_DIR}/FEX
 target_link_libraries(armxbox_fex_diagnostic PRIVATE FEXCore FEXCore_Base JemallocLibs Threads::Threads ${CMAKE_DL_LIBS})
 target_compile_options(armxbox_fex_diagnostic PRIVATE -fno-exceptions)
 target_link_options(armxbox_fex_diagnostic PRIVATE -Wl,--no-undefined -Wl,-z,max-page-size=16384)
+if(ANDROID OR ARMXBOX_HOST_OUTPUT_VULKAN)
+  # Shader compilation is a host build step; no compiler/layer is required on device.
+  find_program(ARMXBOX_GLSLANG NAMES glslangValidator NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+  find_program(ARMXBOX_SPIRV_VAL NAMES spirv-val NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+  find_program(ARMXBOX_SHADER_PYTHON NAMES python3 NO_CMAKE_FIND_ROOT_PATH REQUIRED)
+  set(ARMXBOX_SHADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/output-shaders")
+  foreach(stage vert frag)
+    add_custom_command(OUTPUT "${ARMXBOX_SHADER_DIR}/output.${stage}.spv"
+      COMMAND "${CMAKE_COMMAND}" -E make_directory "${ARMXBOX_SHADER_DIR}"
+      COMMAND "${ARMXBOX_GLSLANG}" --target-env vulkan1.0 -V
+        "${CMAKE_CURRENT_SOURCE_DIR}/graphics/output.${stage}"
+        -o "${ARMXBOX_SHADER_DIR}/output.${stage}.spv"
+      COMMAND "${ARMXBOX_SPIRV_VAL}" --target-env vulkan1.0 "${ARMXBOX_SHADER_DIR}/output.${stage}.spv"
+      DEPENDS "graphics/output.${stage}" VERBATIM)
+  endforeach()
+  add_custom_command(OUTPUT "${ARMXBOX_SHADER_DIR}/output_spirv.h"
+    COMMAND "${ARMXBOX_SHADER_PYTHON}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/embed-spirv.py"
+      "${ARMXBOX_SHADER_DIR}/output.vert.spv" "${ARMXBOX_SHADER_DIR}/output.frag.spv"
+      "${ARMXBOX_SHADER_DIR}/output_spirv.h"
+    DEPENDS "${ARMXBOX_SHADER_DIR}/output.vert.spv" "${ARMXBOX_SHADER_DIR}/output.frag.spv"
+      scripts/embed-spirv.py VERBATIM)
+  add_library(armxbox_output_vulkan STATIC graphics/output_vulkan.cpp)
+  target_include_directories(armxbox_output_vulkan PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/graphics" "${CMAKE_CURRENT_SOURCE_DIR}")
+  target_compile_options(armxbox_output_vulkan PRIVATE -fexceptions)
+  if(ANDROID)
+    target_compile_options(armxbox_output_vulkan PRIVATE -ffixed-x18)
+    target_link_libraries(armxbox_output_vulkan PUBLIC vulkan)
+  else()
+    find_package(Vulkan REQUIRED)
+    target_link_libraries(armxbox_output_vulkan PUBLIC Vulkan::Vulkan)
+  endif()
+  # The probe wrapper contains exceptions before returning to the CPU diagnostic.
+  add_library(armxbox_output_vulkan_probe STATIC graphics/output_vulkan_probe.cpp
+    "${ARMXBOX_SHADER_DIR}/output_spirv.h")
+  target_include_directories(armxbox_output_vulkan_probe PRIVATE "${ARMXBOX_SHADER_DIR}")
+  target_compile_options(armxbox_output_vulkan_probe PRIVATE -fexceptions)
+  if(ANDROID)
+    target_compile_options(armxbox_output_vulkan_probe PRIVATE -ffixed-x18)
+  endif()
+  target_link_libraries(armxbox_output_vulkan_probe PUBLIC armxbox_output_vulkan)
+  target_link_libraries(armxbox_fex_diagnostic PRIVATE armxbox_output_vulkan_probe)
+  target_compile_definitions(armxbox_fex_diagnostic PRIVATE ARMXBOX_OUTPUT_VULKAN_PROBE=1)
+endif()
 if(ANDROID)
   target_sources(armxbox_fex_diagnostic PRIVATE jni.cpp abi_witness.S raw_fault_probe.cpp)
   target_link_libraries(armxbox_fex_diagnostic PRIVATE log)

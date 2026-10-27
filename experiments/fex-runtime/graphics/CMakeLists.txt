@@ -13,8 +13,26 @@ foreach(stage vert frag)
     DEPENDS "output.${stage}" VERBATIM)
 endforeach()
 add_custom_target(output_shaders DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/output.vert.spv" "${CMAKE_CURRENT_BINARY_DIR}/output.frag.spv")
+add_library(armxbox_output_vulkan STATIC output_vulkan.cpp)
+target_link_libraries(armxbox_output_vulkan PUBLIC Vulkan::Vulkan)
+target_include_directories(armxbox_output_vulkan PUBLIC .. .)
+target_compile_options(armxbox_output_vulkan PRIVATE -fexceptions -Wall -Wextra -Werror -Wno-missing-field-initializers)
 add_executable(armxbox_output_vulkan_test output_vulkan_test.cpp ../output_packet.cpp)
 add_dependencies(armxbox_output_vulkan_test output_shaders)
-target_link_libraries(armxbox_output_vulkan_test PRIVATE Vulkan::Vulkan)
+target_link_libraries(armxbox_output_vulkan_test PRIVATE armxbox_output_vulkan)
 target_include_directories(armxbox_output_vulkan_test PRIVATE ..)
 target_compile_options(armxbox_output_vulkan_test PRIVATE -Wall -Wextra -Werror -Wno-missing-field-initializers)
+
+# Test-only fake device/producer verifies the real noexcept bridge under failures.
+# It neither links nor impersonates Vulkan execution in the render test above.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/output_spirv.h"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/embed-spirv.py"
+    "${CMAKE_CURRENT_BINARY_DIR}/output.vert.spv" "${CMAKE_CURRENT_BINARY_DIR}/output.frag.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/output_spirv.h"
+  DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/output.vert.spv" "${CMAKE_CURRENT_BINARY_DIR}/output.frag.spv"
+    ../scripts/embed-spirv.py VERBATIM)
+add_executable(armxbox_output_vulkan_probe_test output_vulkan_probe_test.cpp
+  output_vulkan_probe.cpp ../output_packet.cpp "${CMAKE_CURRENT_BINARY_DIR}/output_spirv.h")
+target_include_directories(armxbox_output_vulkan_probe_test PRIVATE .. . "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_options(armxbox_output_vulkan_probe_test PRIVATE -fexceptions -Wall -Wextra -Werror)

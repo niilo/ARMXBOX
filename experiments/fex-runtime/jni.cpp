@@ -19,8 +19,8 @@ Java_org_armxbox_fexprobe_MainActivity_runProbe(JNIEnv *env, jclass,
     if (fd < 0)
         return env->NewStringUTF("FAIL opening persistent progress journal");
     armxbox_fex_set_trace_fd(fd);
-    armxbox::traceLine("JNI entered; beginning CPU fixtures");
-    char report[16384];
+    armxbox::traceLine("JNI entered; beginning CPU and offscreen Vulkan fixtures");
+    char report[24576];
     armxbox_fex_selftest(report, sizeof report);
     armxbox::traceLine("JNI fixtures returned; creating Java report");
     __android_log_write(ANDROID_LOG_INFO, "ARMXBOX-FEX", report);

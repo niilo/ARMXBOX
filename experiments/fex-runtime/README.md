@@ -7,7 +7,7 @@ title FPS and does not admit retail games. VIXL timings are not device timings.
 ## Build and run
 
 Tools: Python 3.9+, Git, Ninja, CMake 3.22+, Clang, Android SDK 36,
-build-tools 36.1.0, NDK 30.0.15729638, JDK 21+. Cloud development used Clang 21.
+build-tools 36.1.0, NDK 30.0.15729638, JDK 21+, glslangValidator and spirv-val. Cloud development used Clang 21.
 The x86-64 Linux simulator build additionally requires an AVX-capable host.
 
 ```sh
@@ -41,7 +41,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.12a-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.12b-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -52,16 +52,22 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.12a/code16**: [guest-produced graphics/PCM packets
-and immutable ownership](../../docs/devel/fex-hle/phase12a.md). Cloud runs pass
-182 checks in normal, single-block and forced hint-only modes. The [Pocket S report](../../docs/devel/fex-hle/phase12a-android-report.md)
-passes all **206 checks**, four output entries, seven Fill XBE entries,
-113 policy entries and 27 native bridge entries, with all six ABI witnesses.
-This candidate does not display graphics or play PCM yet.
+The current build is **phase0.12b/code17**: [native guest packet to offscreen Vulkan](../../docs/devel/fex-hle/phase12b.md).
+Tap **Run CPU + GPU fixtures**, then **Share report**. Native acceptance is pending:
+expect **213 checks** (all 206 prior CPU identities plus seven GPU checks), four
+output entries, seven Fill XBE entries, 113 policy entries and 27 native bridge
+entries. This probe uses Android's system Vulkan loader and reports the actual
+driver; it does not inherit production's custom Turnip selection. There is no
+surface presentation or PCM playback. A valid native report must show both cold
+and warm pixel checks and explicit cleanup passing.
 
-The previous [Pocket S report](../../docs/devel/fex-hle/phase111-android-report.md)
-is phase0.11.1/code15 with 193 native checks. This accepts its fixed generated
-profile, not retail XBE loading. Next: [offscreen Vulkan and PCM integration](../../docs/devel/fex-hle/phase12-plan.md).
+[Phase0.12a's Pocket S report](../../docs/devel/fex-hle/phase12a-android-report.md)
+passes all 206 expected CPU checks and remains the accepted device baseline.
+Default cloud CPU runs pass 182 checks in normal, single-block and forced hint-only
+modes. Optional `-DARMXBOX_HOST_OUTPUT_VULKAN=ON` adds the seven GPU checks for
+189 host outcomes; it requires Vulkan headers/loader, a driver and shader tools.
+The independent [graphics suite](graphics/README.md) additionally checks validated
+rendering, wrong shaders and bridge exception/failure handling.
 
 [Phase0.10.2's Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md)
 passes all 177 prior native checks, clearing the diagnostic crash for that run.

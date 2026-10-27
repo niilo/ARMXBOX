@@ -24,9 +24,11 @@ jobs:
           set -euo pipefail
           cmake -S experiments/fex-runtime/graphics -B "$RUNNER_TEMP/fex-graphics" -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/fex-graphics" -j 2
+          timeout 30s "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_probe_test" | tee "$RUNNER_TEMP/fex-output-vulkan-bridge.txt"
           icd=(/usr/share/vulkan/icd.d/lvp_icd*.json)
           test "${#icd[@]}" = 1
           VK_ICD_FILENAMES="${icd[0]}" timeout 30s "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_test" "$RUNNER_TEMP/fex-graphics" | tee "$RUNNER_TEMP/fex-output-vulkan.txt"
+          VK_LAYER_PATH=/nonexistent VK_ICD_FILENAMES="${icd[0]}" timeout 30s "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_test" "$RUNNER_TEMP/fex-graphics" --no-validation | tee "$RUNNER_TEMP/fex-output-vulkan-no-validation.txt"
           VK_ICD_FILENAMES="${icd[0]}" python3 experiments/fex-runtime/graphics/check-negatives.py "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_test" "$RUNNER_TEMP/fex-graphics" | tee "$RUNNER_TEMP/fex-output-vulkan-negatives.txt"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
@@ -34,6 +36,8 @@ jobs:
           path: |
             ${{ runner.temp }}/fex-output-vulkan.txt
             ${{ runner.temp }}/fex-output-vulkan-negatives.txt
+            ${{ runner.temp }}/fex-output-vulkan-no-validation.txt
+            ${{ runner.temp }}/fex-output-vulkan-bridge.txt
             ${{ runner.temp }}/fex-graphics/offscreen-*.rgba
             ${{ runner.temp }}/fex-graphics/offscreen-*.ppm
             ${{ runner.temp }}/fex-graphics/output.*.spv

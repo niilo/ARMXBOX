@@ -5,8 +5,8 @@ strictly admitted XBE, one bounded typed kernel service and seven native entries
 The next milestone connects guest-produced data to host graphics/audio, retaining
 all 193 checks. This document records the source audit and implementation order;
 [Phase0.12a](phase12a.md) implements stage 1 below; its native gate is pending.
-[Phase0.12b](phase12b.md) adds the cloud offscreen consumer; native GPU
-integration and playback remain open.
+[Phase0.12b](phase12b.md) adds the offscreen consumer and code17 native guest integration. Native GPU
+acceptance, presentation and playback remain open.
 
 ## Existing backend audit
 

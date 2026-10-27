@@ -21,7 +21,7 @@ readelf = Path(sys.argv[2]) / 'ndk/30.0.15729638/toolchains/llvm/prebuilt/linux-
 for source in Path(sys.argv[1]).glob('*.so'):
     dynamic = subprocess.check_output([str(readelf), '-d', str(source)], text=True)
     needed = set(re.findall(r'\(NEEDED\).*?\[([^]]+)\]', dynamic))
-    unpackaged = needed - {'libc.so', 'libm.so', 'libdl.so', 'liblog.so'}
+    unpackaged = needed - {'libc.so', 'libm.so', 'libdl.so', 'liblog.so', 'libvulkan.so'}
     if unpackaged:
         raise SystemExit(f'{source.name}: unpackaged native dependencies: {sorted(unpackaged)}')
 PYELF
@@ -40,6 +40,6 @@ PYZIP
 if [[ ! -f "$probe_out/probe-debug.keystore" ]]; then
   keytool -genkeypair -keystore "$probe_out/probe-debug.keystore" -storepass android -keypass android -alias probe -keyalg RSA -keysize 2048 -validity 3650 -dname 'CN=ARMXBOX Experimental Debug'
 fi
-"$build_tools/apksigner" sign --ks "$probe_out/probe-debug.keystore" --ks-pass pass:android --out "$probe_out/armxbox-fex-phase0.12a-debug.apk" "$probe_out/aligned.apk"
-"$build_tools/apksigner" verify "$probe_out/armxbox-fex-phase0.12a-debug.apk"
-"$build_tools/zipalign" -c -P 16 4 "$probe_out/armxbox-fex-phase0.12a-debug.apk"
+"$build_tools/apksigner" sign --ks "$probe_out/probe-debug.keystore" --ks-pass pass:android --out "$probe_out/armxbox-fex-phase0.12b-debug.apk" "$probe_out/aligned.apk"
+"$build_tools/apksigner" verify "$probe_out/armxbox-fex-phase0.12b-debug.apk"
+"$build_tools/zipalign" -c -P 16 4 "$probe_out/armxbox-fex-phase0.12b-debug.apk"

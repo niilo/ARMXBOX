@@ -20,6 +20,10 @@ jobs:
           python3 experiments/fex-runtime/scripts/generate-xbox-instructions.py --check
       - name: Prepare pinned engine
         run: python3 experiments/fex-runtime/scripts/prepare.py "$RUNNER_TEMP/FEX"
+      - name: Install software Vulkan and shader tools for guest output integration
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libvulkan-dev mesa-vulkan-drivers glslang-tools spirv-tools
       - name: Configure host simulator
         run: >-
           cmake -S experiments/fex-runtime -B "$RUNNER_TEMP/fex-host" -G Ninja
@@ -47,6 +51,32 @@ jobs:
           ARMXBOX_PROBE_SINGLE_BLOCK=1 timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" 2> "$RUNNER_TEMP/fex-fixtures-single-stderr.txt" | tee "$RUNNER_TEMP/fex-fixtures-single.txt"
           timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" 2> "$RUNNER_TEMP/fex-fixtures-stderr.txt" | tee "$RUNNER_TEMP/fex-fixtures.txt"
           ARMXBOX_PROBE_XBE_HINT_ONLY=1 timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" 2> "$RUNNER_TEMP/fex-fixtures-hint-stderr.txt" | tee "$RUNNER_TEMP/fex-fixtures-hint.txt"
+          # Same generated guest producer, now through the native-style GPU bridge.
+          cmake -S experiments/fex-runtime -B "$RUNNER_TEMP/fex-host" -DARMXBOX_HOST_OUTPUT_VULKAN=ON
+          cmake --build "$RUNNER_TEMP/fex-host" --target armxbox_fex_selftest -j 2
+          icd=(/usr/share/vulkan/icd.d/lvp_icd*.json)
+          test "${#icd[@]}" = 1
+          VK_ICD_FILENAMES="${icd[0]}" timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" 2> "$RUNNER_TEMP/fex-guest-vulkan-stderr.txt" | tee "$RUNNER_TEMP/fex-guest-vulkan.txt"
+          set +e
+          VK_ICD_FILENAMES=/nonexistent timeout 120s "$RUNNER_TEMP/fex-host/armxbox_fex_selftest" > "$RUNNER_TEMP/fex-guest-vulkan-unavailable.txt" 2> "$RUNNER_TEMP/fex-guest-vulkan-unavailable-stderr.txt"
+          gpu_failure=$?
+          set -e
+          test "$gpu_failure" = 1
+          python3 - "$RUNNER_TEMP" <<'PY_GPU'
+          import sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          base = {line for line in (root/'fex-fixtures.txt').read_text().splitlines() if line.startswith('PASS ')}
+          good = (root/'fex-guest-vulkan.txt').read_text().splitlines()
+          bad = (root/'fex-guest-vulkan-unavailable.txt').read_text().splitlines()
+          good_pass = [line for line in good if line.startswith('PASS ')]
+          assert len(base) == 182 and len(good_pass) == len(set(good_pass)) == 189
+          assert base <= set(good_pass)
+          assert not any(line.startswith('FAIL ') for line in good)
+          assert {line for line in bad if line.startswith('PASS ')} == base
+          assert len([line for line in bad if line.startswith('FAIL Vulkan ')]) == 7
+          print('PASS guest Vulkan: 189 unique checks; unavailable driver preserves 182 CPU checks and reports seven GPU failures')
+          PY_GPU
       - name: Capture host failure backtrace
         if: failure()
         continue-on-error: true
@@ -67,6 +97,7 @@ jobs:
         with:
           name: fex-phase0-host-report
           path: |
+            ${{ runner.temp }}/fex-guest-vulkan*.txt
             ${{ runner.temp }}/fex-output-contract.txt
             ${{ runner.temp }}/fex-output-reference.txt
             ${{ runner.temp }}/generated-output.xbe
@@ -107,6 +138,10 @@ jobs:
           python3 experiments/fex-runtime/scripts/generate-xbox-instructions.py --check
       - name: Prepare pinned engine
         run: python3 experiments/fex-runtime/scripts/prepare.py "$RUNNER_TEMP/FEX"
+      - name: Install build-time shader tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq glslang-tools spirv-tools
       - name: Compile and link the full Android core
         run: |
           cmake -S experiments/fex-runtime -B "$RUNNER_TEMP/fex-android" -G Ninja \
@@ -120,9 +155,9 @@ jobs:
         run: bash experiments/fex-runtime/scripts/package-apk.sh "$RUNNER_TEMP/fex-android" "$RUNNER_TEMP/fex-apk"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: armxbox-fex-phase0.12a-debug
+          name: armxbox-fex-phase0.12b-debug
           path: |
-            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.12a-debug.apk
+            ${{ runner.temp }}/fex-apk/armxbox-fex-phase0.12b-debug.apk
             ${{ runner.temp }}/fex-apk/assets/THIRD_PARTY_NOTICES
           if-no-files-found: error
           retention-days: 30

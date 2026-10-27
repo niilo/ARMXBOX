@@ -61,13 +61,13 @@ public final class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(24, 48, 24, 24);
         TextView title = new TextView(this);
-        title.setText("ARMXBOX FEX Probe • phase0.12a\nCPU diagnostics only • no game support\n");
+        title.setText("ARMXBOX FEX Probe • phase0.12b\nCPU + offscreen Vulkan diagnostics • no game support\n");
         layout.addView(title);
         TextView output = new TextView(this);
         output.setTextIsSelectable(true);
         output.setText(report);
         Button run = new Button(this);
-        run.setText("Run CPU fixtures");
+        run.setText("Run CPU + GPU fixtures");
         run.setEnabled(!started);
         layout.addView(run);
         Button share = new Button(this);
@@ -82,12 +82,12 @@ public final class MainActivity extends Activity {
         run.setOnClickListener(view -> {
             started = true;
             run.setEnabled(false);
-            report = "Running CPU fixtures…\nProgress is saved on this device.\n"
+            report = "Running CPU + GPU fixtures…\nProgress is saved on this device.\n"
                 + "If the app closes, reopen it and Share report before another run.";
             output.setText(report);
             new Thread(() -> {
                 try {
-                    write(traceFile(), device() + "ARMXBOX FEX phase0.12a/code16\nJava: loading native library\n", false);
+                    write(traceFile(), device() + "ARMXBOX FEX phase0.12b/code17\nJava: loading native library\n", false);
                     System.loadLibrary("armxbox_fex_diagnostic");
                     write(traceFile(), "Java: library loaded; entering JNI\n", true);
                     report = device() + runProbe(traceFile().getAbsolutePath());

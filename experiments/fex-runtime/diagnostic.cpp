@@ -12,6 +12,9 @@
 #ifdef __ANDROID__
 #include "raw_fault_probe.h"
 #endif
+#ifdef ARMXBOX_OUTPUT_VULKAN_PROBE
+#include "graphics/output_vulkan_probe.h"
+#endif
 #include <cstdlib>
 #include <FEXCore/Config/Config.h>
 #include <FEXCore/Core/Context.h>
@@ -82,7 +85,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.12a; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.12b; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -565,7 +568,12 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
 #endif
   report.line("Controlled XBE entries: %u\n", xbe.entries);
   if (xbe.detail[0]) report.line("Controlled XBE detail: %s\n", xbe.detail);
+#ifdef ARMXBOX_OUTPUT_VULKAN_PROBE
+  armxbox::OutputGpuResults gpuOutput;
+  const auto packetOutput = armxbox::runOutputWithGpuProbe(features, &calls, diagnosticLog, gpuOutput);
+#else
   const auto packetOutput = armxbox::runOutputProbe(features, &calls, diagnosticLog);
+#endif
   for (unsigned i=0; i<packetOutput.passed.size(); ++i) {
     report.check(armxbox::outputProbeCheckLabel(i),packetOutput.passed[i]);
   }
@@ -575,6 +583,12 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
 #endif
   report.line("Output producer entries: %u\n",packetOutput.entries);
   if(packetOutput.detail[0]) report.line("Output detail: %s\n",packetOutput.detail);
+#ifdef ARMXBOX_OUTPUT_VULKAN_PROBE
+  for (unsigned i = 0; i < gpuOutput.passed.size(); ++i)
+    report.check(armxbox::outputGpuCheckLabel(i), gpuOutput.passed[i]);
+  if (gpuOutput.detail[0]) report.line("Vulkan detail: %s\n", gpuOutput.detail);
+  report.line("GPU path: system Vulkan loader; offscreen readback; validation disabled; no surface or PCM playback\n");
+#endif
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
   report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);
@@ -582,6 +596,11 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   FEXCore::Config::Shutdown();
   // Process-owned allocator remains alive; never unmap live global FEX objects.
   munmap(mapping, RegionSize);
-  report.line("Result: %s; general MMIO/unaligned/atomic accesses, full bridge, 16K, Xbox CPU policy and performance gates remain open\n", report.failed ? "FAIL" : "CPU FIXTURES PASS");
+#ifdef ARMXBOX_OUTPUT_VULKAN_PROBE
+  constexpr const char *success = "CPU AND GPU FIXTURES PASS";
+#else
+  constexpr const char *success = "CPU FIXTURES PASS";
+#endif
+  report.line("Result: %s; general MMIO/unaligned/atomic accesses, full bridge, 16K, Xbox CPU policy and performance gates remain open\n", report.failed ? "FAIL" : success);
   return report.failed ? 1 : 0;
 }

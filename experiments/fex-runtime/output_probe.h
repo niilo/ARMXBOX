@@ -9,6 +9,9 @@ class SyscallHandler;
 }
 } // namespace FEXCore
 namespace armxbox {
+class OutputPacket;
+using OutputPacketConsumer = void (*)(const OutputPacket &, unsigned,
+                                      void *) noexcept;
 constexpr unsigned OutputCheckCount = 12;
 struct OutputProbeResults {
     std::array<bool, OutputCheckCount> passed{};
@@ -19,5 +22,7 @@ struct OutputProbeResults {
 const char *outputProbeCheckLabel(unsigned);
 OutputProbeResults runOutputProbe(const FEXCore::HostFeatures &,
                                   FEXCore::HLE::SyscallHandler *,
-                                  void (*log)(const char *));
+                                  void (*log)(const char *),
+                                  OutputPacketConsumer consume = nullptr,
+                                  void *consumer = nullptr);
 } // namespace armxbox
