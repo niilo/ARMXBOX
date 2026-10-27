@@ -33,7 +33,8 @@ execution. Its [native report](phase11-android-report.md) stops at mapping setup
 including seven XBE entries and their ABI witnesses. The next scoped milestone
 is the [graphics/PCM ownership and integration plan](phase12-plan.md).
 [Phase0.12a](phase12a.md) now implements guest-produced immutable output packets;
-182 simulator checks pass and the 206-check native gate is pending. The broader
+182 simulator checks pass and the [Pocket S report](phase12a-android-report.md)
+passes all 206 expected native checks. The broader
 [virtual-state plan](phase10-plan.md) remains open. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the

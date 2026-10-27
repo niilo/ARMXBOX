@@ -54,12 +54,12 @@ returning a report. A hang/crash is a failed probe, never an implied success.
 
 The current build is **phase0.12a/code16**: [guest-produced graphics/PCM packets
 and immutable ownership](../../docs/devel/fex-hle/phase12a.md). Cloud runs pass
-182 checks in normal, single-block and forced hint-only modes. Native acceptance
-is pending: expect **206 checks**, four output entries, seven Fill XBE entries,
+182 checks in normal, single-block and forced hint-only modes. The [Pocket S report](../../docs/devel/fex-hle/phase12a-android-report.md)
+passes all **206 checks**, four output entries, seven Fill XBE entries,
 113 policy entries and 27 native bridge entries, with all six ABI witnesses.
 This candidate does not display graphics or play PCM yet.
 
-The last accepted [Pocket S report](../../docs/devel/fex-hle/phase111-android-report.md)
+The previous [Pocket S report](../../docs/devel/fex-hle/phase111-android-report.md)
 is phase0.11.1/code15 with 193 native checks. This accepts its fixed generated
 profile, not retail XBE loading. Next: [offscreen Vulkan and PCM integration](../../docs/devel/fex-hle/phase12-plan.md).
 

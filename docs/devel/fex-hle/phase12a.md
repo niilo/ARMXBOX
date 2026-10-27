@@ -53,11 +53,10 @@ triangle, checker, PCM and all 72 instructions. Output XBE SHA-256:
 Canonical wire fixture SHA-256:
 `6b0c1ed9d42078303484985b568eb3c66caf899927b6654edeb72e5a5a4e9cbe`.
 
-The candidate is **phase0.12a/code16**. Native acceptance remains pending:
+The candidate is **phase0.12a/code16**. The [Pocket S report](phase12a-android-report.md) accepts this scoped increment:
 expect **206 unique PASS checks**, four output entries with all six ABI witnesses,
 seven Fill XBE entries, 113 policy entries and 27 native bridge entries.
-[Phase0.11.1](phase111-android-report.md) remains the last accepted native result
-at 193 checks. Host simulation and APK alignment do not establish native output
+All 193 [Phase0.11.1](phase111-android-report.md) native identities remain clean. Host simulation and APK alignment do not establish native output
 execution or 16 KiB runtime support.
 
 Next is the offscreen Vulkan consumer and independent pixel oracle, then Android
