@@ -1,0 +1,191 @@
+diff --git a/FEXCore/Source/Interface/Core/JIT/JITClass.h b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+index d0b4c5ca6..9428d1a48 100644
+--- a/FEXCore/Source/Interface/Core/JIT/JITClass.h
++++ b/FEXCore/Source/Interface/Core/JIT/JITClass.h
+@@ -646,6 +646,7 @@ private:
+ #define DEF_OP(x) void Op_##x(IR::IROp_Header const* IROp, IR::Ref Node)
+ 
+   ///< Unhandled handler
++  void EmitExceptionExit(const IR::BreakDefinition& Reason);
+   DEF_OP(Unhandled);
+ 
+   ///< No-op Handler
+diff --git a/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp b/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp
+index 998f46ae7..64de06e31 100644
+--- a/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp
+@@ -57,17 +57,28 @@ DEF_OP(Fence) {
+ }
+ 
+ DEF_OP(Break) {
+-  auto Op = IROp->C<IR::IROp_Break>();
++  EmitExceptionExit(IROp->C<IR::IROp_Break>()->Reason);
++}
++
++DEF_OP(CondBreak) {
++  const auto Op = IROp->C<IR::IROp_CondBreak>();
++  ARMEmitter::ForwardLabel Continue;
++  (void)cbz(ARMEmitter::Size::i64Bit, GetReg(Op->Condition), &Continue);
++  str(GetReg(Op->GuestPC).X(), STATE, offsetof(FEXCore::Core::CpuStateFrame, State.rip));
++  EmitExceptionExit(Op->Reason);
++  BindOrRestart(&Continue);
++}
+ 
++void Arm64JITCore::EmitExceptionExit(const IR::BreakDefinition& Reason) {
+   // First we must reset the stack
+   ResetStack();
+ 
+   Core::CpuStateFrame::SynchronousFaultDataStruct State = {
+     .FaultToTopAndGeneratedException = 1,
+-    .Signal = Op->Reason.Signal,
+-    .TrapNo = Op->Reason.TrapNumber,
+-    .si_code = Op->Reason.si_code,
+-    .err_code = Op->Reason.ErrorRegister,
++    .Signal = Reason.Signal,
++    .TrapNo = Reason.TrapNumber,
++    .si_code = Reason.si_code,
++    .err_code = Reason.ErrorRegister,
+   };
+ 
+   uint64_t Constant {};
+@@ -80,7 +91,7 @@ DEF_OP(Break) {
+     ldr(TMP1, STATE, offsetof(FEXCore::Core::CpuStateFrame, Pointers.GuestSignal_SynchronousFault));
+     br(TMP1);
+   } else {
+-    switch (Op->Reason.Signal) {
++    switch (Reason.Signal) {
+     case Core::FAULT_SIGILL:
+       ldr(TMP1, STATE, offsetof(FEXCore::Core::CpuStateFrame, Pointers.GuestSignal_SIGILL));
+       br(TMP1);
+diff --git a/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp b/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp
+index 9a7494350..ee7932ab0 100644
+--- a/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp
++++ b/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp
+@@ -3769,7 +3769,75 @@ void OpDispatchBuilder::NEGOp(OpcodeArgs) {
+   }
+ }
+ 
++// IA-32 DIV/IDIV need precise #DE exits before committing quotient/remainder.
++// Native AArch64 division itself does not trap on zero or signed overflow.
++void OpDispatchBuilder::IA32DivideOp(OpcodeArgs, bool Signed) {
++  const auto Size = OpSizeFromSrc(Op);
++  const auto Bits = IR::OpSizeAsBits(Size);
++  LOGMAN_THROW_A_FMT(Bits == 8 || Bits == 16 || Bits == 32, "Invalid IA-32 divide width");
++
++  Ref Divisor {}, High {}, Dividend {};
++  auto LoadOperands = [&] {
++    Ref RawDivisor = LoadSourceGPR(Op, Op->Dest, Op->Flags);
++    Divisor = Signed ? _Sbfe(OpSize::i64Bit, Bits, 0, RawDivisor) : _Bfe(OpSize::i64Bit, Bits, 0, RawDivisor);
++    Ref Low = LoadGPRRegister(X86State::REG_RAX);
++    High = Bits == 8 ? _Bfe(OpSize::i64Bit, 8, 8, Low) : _Bfe(OpSize::i64Bit, Bits, 0, LoadGPRRegister(X86State::REG_RDX));
++    Low = _Bfe(OpSize::i64Bit, Bits, 0, Low);
++    Dividend = _Bfi(OpSize::i64Bit, Bits, Bits, Low, High);
++    if (Signed && Bits < 32) Dividend = _Sbfe(OpSize::i64Bit, Bits * 2, 0, Dividend);
++  };
++  LoadOperands();
++  Ref InvalidDivision {};
++  if (Signed) {
++    auto NMask = _Ashr(OpSize::i64Bit, Dividend, Constant(63));
++    auto DMask = _Ashr(OpSize::i64Bit, Divisor, Constant(63));
++    auto AbsN = _Sub(OpSize::i64Bit, _Xor(OpSize::i64Bit, Dividend, NMask), NMask);
++    auto AbsD = _Sub(OpSize::i64Bit, _Xor(OpSize::i64Bit, Divisor, DMask), DMask);
++    auto Negative = _And(OpSize::i64Bit, _Xor(OpSize::i64Bit, NMask, DMask), Constant(1));
++    // Truncation toward zero permits magnitude 2^(w-1) only for a negative
++    // quotient. The first invalid magnitude times |divisor| fits in uint64_t
++    // for IA-32 widths, even when the dividend is INT64_MIN. Divisor zero
++    // gives threshold zero and is therefore rejected by the same comparison.
++    auto Limit = _Add(OpSize::i64Bit, Constant(1ULL << (Bits - 1)), Negative);
++    auto Threshold = _Mul(OpSize::i64Bit, Limit, AbsD);
++    InvalidDivision = _Select(OpSize::i64Bit, OpSize::i64Bit, CondClass::UGE, AbsN, Threshold, Constant(1), Constant(0));
++  } else {
++    InvalidDivision = _Select(OpSize::i64Bit, OpSize::i64Bit, CondClass::UGE, High, Divisor, Constant(1), Constant(0));
++  }
++  // Keep the checked operands in one IR block. In particular, a memory
++  // divisor must be read exactly once (MMIO and concurrent RAM included).
++  FlushRegisterCache();
++  _CondBreak(InvalidDivision, GetRelocatedPC(Op, -Op->InstSize),
++             FEXCore::IR::BreakDefinition {.ErrorRegister = 0, .Signal = SIGFPE, .TrapNumber = X86State::X86_TRAPNO_DE, .si_code = FPE_INTDIV});
++  Ref Quotient = _AllocateGPR(true);
++  Ref Remainder = _AllocateGPR(true);
++  if (Signed) {
++    _Div(OpSize::i64Bit, Dividend, Invalid(), Divisor, Quotient, Remainder);
++  } else {
++    _UDiv(OpSize::i64Bit, Dividend, Invalid(), Divisor, Quotient, Remainder);
++  }
++  if (Bits == 8) {
++    auto AX = _Bfi(GetGPROpSize(), 8, 8, Quotient, Remainder);
++    StoreGPRRegister(X86State::REG_RAX, AX, OpSize::i16Bit);
++  } else {
++    if (Bits == 32) {
++      // Pair destinations are 64-bit IR values; maintain canonical IA-32
++      // zero-extension exactly as the original 32-bit dispatcher path does.
++      Quotient = _Bfe(OpSize::i32Bit, 32, 0, Quotient);
++      Remainder = _Bfe(OpSize::i32Bit, 32, 0, Remainder);
++    }
++    StoreGPRRegister(X86State::REG_RAX, Quotient, Size);
++    StoreGPRRegister(X86State::REG_RDX, Remainder, Size);
++  }
++  AcidTestFlags(X86State::RFLAG_OF_RAW_LOC, X86State::RFLAG_SF_RAW_LOC, X86State::RFLAG_ZF_RAW_LOC, X86State::RFLAG_AF_RAW_LOC,
++                X86State::RFLAG_PF_RAW_LOC, X86State::RFLAG_CF_RAW_LOC);
++}
++
+ void OpDispatchBuilder::DIVOp(OpcodeArgs) {
++  if (!Is64BitMode) {
++    IA32DivideOp(Op, false);
++    return;
++  }
+   const auto GPRSize = GetGPROpSize();
+   auto Size = OpSizeFromSrc(Op);
+ 
+@@ -3815,6 +3883,10 @@ void OpDispatchBuilder::DIVOp(OpcodeArgs) {
+ }
+ 
+ void OpDispatchBuilder::IDIVOp(OpcodeArgs) {
++  if (!Is64BitMode) {
++    IA32DivideOp(Op, true);
++    return;
++  }
+   // This loads the divisor
+   Ref Divisor = LoadSourceGPR(Op, Op->Dest, Op->Flags);
+ 
+diff --git a/FEXCore/Source/Interface/Core/OpcodeDispatcher.h b/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
+index 5ff14c092..f537ee318 100644
+--- a/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
++++ b/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
+@@ -458,6 +458,7 @@ public:
+   void INCOp(OpcodeArgs);
+   void DECOp(OpcodeArgs);
+   void NEGOp(OpcodeArgs);
++  void IA32DivideOp(OpcodeArgs, bool Signed);
+   void DIVOp(OpcodeArgs);
+   void IDIVOp(OpcodeArgs);
+   void BSFOp(OpcodeArgs);
+diff --git a/FEXCore/Source/Interface/IR/IR.json b/FEXCore/Source/Interface/IR/IR.json
+index 728e1c099..9d01fe58b 100644
+--- a/FEXCore/Source/Interface/IR/IR.json
++++ b/FEXCore/Source/Interface/IR/IR.json
+@@ -324,6 +324,10 @@
+       "Break BreakDefinition:$Reason": {
+         "HasSideEffects": true
+       },
++      "CondBreak GPR:$Condition, GPR:$GuestPC, BreakDefinition:$Reason": {
++        "HasSideEffects": true,
++        "Desc": ["If Condition is nonzero, publish GuestPC and exit with Reason before changing guest results"]
++      },
+       "CallbackReturn": {
+         "HasSideEffects": true
+       },
+diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
+index dc44f1606..7d0adce59 100644
+--- a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
++++ b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
+@@ -315,6 +315,9 @@ static constexpr FlagInfo ClassifyConst(IROps Op) {
+       .CanEliminate = true,
+     });
+ 
++  // A conditional exception can observe all guest flags before later writes.
++  case OP_CONDBREAK: return FlagInfo::Pack({.Read = FLAG_ALL});
++
+   case OP_LOADPF: return FlagInfo::Pack({.Read = FLAG_P});
+   case OP_LOADAF: return FlagInfo::Pack({.Read = FLAG_A});
+   case OP_STOREPF: return FlagInfo::Pack({.Write = FLAG_P, .CanEliminate = true});

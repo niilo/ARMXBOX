@@ -1,0 +1,180 @@
+diff --git a/FEXCore/Source/Interface/Context/Context.cpp b/FEXCore/Source/Interface/Context/Context.cpp
+index e7aaf51ad..3c4f8a4da 100644
+--- a/FEXCore/Source/Interface/Context/Context.cpp
++++ b/FEXCore/Source/Interface/Context/Context.cpp
+@@ -16,17 +16,20 @@
+ 
+ namespace FEXCore::Context {
+ fextl::unique_ptr<FEXCore::Context::Context> FEXCore::Context::Context::CreateNewContext(
+-  const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints) {
++  const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints, InstructionPolicy Policy) {
++  if (Policy != InstructionPolicy::Default && Policy != InstructionPolicy::XboxReferenceSubset) {
++    return {};
++  }
+   if (Identity != FEXCore::CPUID::IdentityProfile::Default && Identity != FEXCore::CPUID::IdentityProfile::XboxReference) {
+     return {};
+   }
+-  if ((Identity == FEXCore::CPUID::IdentityProfile::XboxReference || InstructionCheckpoints) &&
++  if ((Identity == FEXCore::CPUID::IdentityProfile::XboxReference || InstructionCheckpoints || Policy != InstructionPolicy::Default) &&
+       (FEXCore::Config::Get_IS64BIT_MODE() || FEXCore::Config::Get_DISKCACHE() ||
+        FEXCore::Config::Get_ENABLECODECACHINGWIP() || FEXCore::Config::Get_ENABLECODECACHEVALIDATION())) {
+     // Cached code has no identity-profile key yet. Do not reuse a different ISA identity.
+     return {};
+   }
+-  return fextl::make_unique<FEXCore::Context::ContextImpl>(Features, Identity, InstructionCheckpoints);
++  return fextl::make_unique<FEXCore::Context::ContextImpl>(Features, Identity, InstructionCheckpoints, Policy);
+ }
+ 
+ void FEXCore::Context::ContextImpl::CompileRIP(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP) {
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+index 5c293d6d4..da5d35cd8 100644
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -390,6 +390,7 @@ public:
+   // Fixed before CPUID, translation and code-cache construction. No setter.
+   const FEXCore::CPUID::IdentityProfile CPUIdentity;
+   const bool InstructionCheckpoints;
++  const InstructionPolicy CPUInstructions;
+   // CPUID depends on HostFeatures so needs to be initialized after that.
+   FEXCore::CPUIDEmu CPUID;
+   FEXCore::HLE::SyscallHandler* SyscallHandler {};
+@@ -402,7 +403,7 @@ public:
+ 
+   SignalDelegator* SignalDelegation {};
+ 
+-  ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints);
++  ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints, InstructionPolicy Policy);
+ 
+   static void ThreadRemoveCodeEntryFromJit(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP);
+ 
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+index 5e7c5e87d..487007719 100644
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -79,10 +79,11 @@ $end_info$
+ #include <xxhash.h>
+ 
+ namespace FEXCore::Context {
+-ContextImpl::ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints)
++ContextImpl::ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints, InstructionPolicy Policy)
+   : HostFeatures {Features}
+   , CPUIdentity {Identity}
+   , InstructionCheckpoints {InstructionCheckpoints}
++  , CPUInstructions {Policy}
+   , CPUID {this}
+   , CodeCache {*this} {
+   if (!Config.Is64BitMode()) {
+@@ -356,7 +357,7 @@ void ContextImpl::SetFlagsFromCompactedEFLAGS(FEXCore::Core::InternalThreadState
+ }
+ 
+ bool ContextImpl::InitCore() {
+-  if ((CPUIdentity == FEXCore::CPUID::IdentityProfile::XboxReference || InstructionCheckpoints) &&
++  if ((CPUIdentity == FEXCore::CPUID::IdentityProfile::XboxReference || InstructionCheckpoints || CPUInstructions != InstructionPolicy::Default) &&
+       (Config.Is64BitMode() || FEXCore::Config::Get_DISKCACHE() || CodeCache.IsGeneratingCache ||
+        FEXCore::Config::Get_ENABLECODECACHINGWIP() || FEXCore::Config::Get_ENABLECODECACHEVALIDATION())) {
+     return false;
+@@ -582,6 +583,21 @@ bool ContextImpl::CheckIfBlockIsCacheable(FEXCore::Core::InternalThreadState& Th
+   return Thread.FrontendDecoder->CheckIfCacheable(Thread, reinterpret_cast<const uint8_t*>(GuestRIP), GuestRIP, MaxInst);
+ }
+ 
++// Match decoded semantic handlers, not guest byte strings or global tables.
++// Deliberately limited: other modern ISA remains outside this admission claim.
++static bool RejectReferenceInstruction(const FEXCore::X86Tables::X86InstInfo* Info) {
++  if (!Info) {
++    return false;
++  }
++  using Builder = FEXCore::IR::OpDispatchBuilder;
++  auto Handler = Info->OpcodeDispatcher.OpDispatch;
++  return Handler == &Builder::Bind<&Builder::VectorALUOp, IR::OP_VFADDP, IR::OpSize::i32Bit> ||
++         Handler == &Builder::PSHUFBOp || Handler == &Builder::PTestOp ||
++         Handler == &Builder::Bind<&Builder::VectorALUOp, IR::OP_VCMPGT, IR::OpSize::i64Bit> ||
++         Handler == &Builder::VZEROOp || Handler == &Builder::AVX128_VZERO ||
++         Handler == &Builder::RDTSCPOp || Handler == &Builder::XGetBVOp;
++}
++
+ ContextImpl::GenerateIRResult
+ ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst) {
+   FEXCORE_PROFILE_SCOPED("GenerateIR");
+@@ -699,7 +715,8 @@ ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t Gue
+         // It is potentially correctness bearing in that sense, but that is a
+         // side effect here and (if that behaviour is required) we should handle
+         // that more explicitly later.
+-        const bool PotentialFault = Thread->OpDispatcher->CanHaveSideEffects(TableInfo, DecodedInfo);
++        const bool PolicyRejected = CPUInstructions == InstructionPolicy::XboxReferenceSubset && RejectReferenceInstruction(TableInfo);
++        const bool PotentialFault = PolicyRejected || Thread->OpDispatcher->CanHaveSideEffects(TableInfo, DecodedInfo);
+         if (PotentialFault) {
+           Thread->OpDispatcher->FlushForFault();
+         } else {
+@@ -747,7 +764,7 @@ ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t Gue
+         }
+ 
+         if (TableInfo && TableInfo->OpcodeDispatcher.OpDispatch) {
+-          auto Fn = TableInfo->OpcodeDispatcher.OpDispatch;
++          auto Fn = PolicyRejected ? &IR::OpDispatchBuilder::UnimplementedOp : TableInfo->OpcodeDispatcher.OpDispatch;
+           Thread->OpDispatcher->ResetHandledLock();
+           Thread->OpDispatcher->ResetDecodeFailure();
+           IR::ForceTSOMode ForceTSO = IR::ForceTSOMode::NoOverride;
+@@ -766,7 +783,7 @@ ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t Gue
+           if (Thread->OpDispatcher->HadDecodeFailure()) {
+             HadDispatchError = true;
+           } else {
+-            if (Thread->OpDispatcher->HasHandledLock() != IsLocked) {
++            if (!PolicyRejected && Thread->OpDispatcher->HasHandledLock() != IsLocked) {
+               HadDispatchError = true;
+               LogMan::Msg::EFmt("Missing LOCK HANDLER at 0x{:x}{{'{}'}}", InstAddress, TableInfo->Name ?: "UND");
+             }
+diff --git a/FEXCore/Source/Interface/Core/Frontend.cpp b/FEXCore/Source/Interface/Core/Frontend.cpp
+index 31d647a38..11b73def4 100644
+--- a/FEXCore/Source/Interface/Core/Frontend.cpp
++++ b/FEXCore/Source/Interface/Core/Frontend.cpp
+@@ -751,8 +751,8 @@ Decoder::DecodedBlockStatus Decoder::NormalOpHeader(const FEXCore::X86Tables::X8
+     uint16_t X87Op = ((Op - 0xD8) << 8) | ModRMByte;
+     return NormalOp(&(*X87Table)[X87Op], X87Op);
+   } else if (Info->Type == FEXCore::X86Tables::TYPE_VEX_TABLE_PREFIX) {
+-    if (!VEXTable) {
+-      // AVX not enabled.
++    if (!VEXTable && CTX->CPUInstructions == FEXCore::Context::InstructionPolicy::Default) {
++      // Preserve default-mode behavior before parsing a disabled extension.
+       return DecodedBlockStatus::INVALID_INST;
+     }
+ 
+@@ -812,6 +812,12 @@ Decoder::DecodedBlockStatus Decoder::NormalOpHeader(const FEXCore::X86Tables::X8
+     Op = OPD(map_select, pp, VEXOp);
+ #undef OPD
+ 
++    if (!VEXTable) {
++      // The reference subset parsed the VEX prefix but has no semantic table.
++      // Report architectural #UD without accepting a partial prefix as an op.
++      return DecodedBlockStatus::UNIMPLEMENTED_INST;
++    }
++
+     const FEXCore::X86Tables::X86InstInfo* LocalInfo = &(*VEXTable)[Op];
+ 
+     if (LocalInfo->Type >= FEXCore::X86Tables::TYPE_VEX_GROUP_12 && LocalInfo->Type <= FEXCore::X86Tables::TYPE_VEX_GROUP_17) {
+diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Core/Context.h
+index bd5dff7e8..586890fd4 100644
+--- a/FEXCore/include/FEXCore/Core/Context.h
++++ b/FEXCore/include/FEXCore/Core/Context.h
+@@ -34,6 +34,12 @@ class IREmitter;
+ } // namespace FEXCore::IR
+ 
+ namespace FEXCore::Context {
++// Explicit diagnostic subset, independent of CPUID identity. Not a full Xbox ISA.
++enum class InstructionPolicy : uint32_t {
++  Default,
++  XboxReferenceSubset,
++};
++
+ enum class ExecutionResult : uint32_t {
+   GuestExit = 0,
+   BudgetExhausted = 1,
+@@ -66,7 +72,8 @@ public:
+    */
+   FEX_DEFAULT_VISIBILITY static fextl::unique_ptr<FEXCore::Context::Context> CreateNewContext(
+     const FEXCore::HostFeatures& Features,
+-    FEXCore::CPUID::IdentityProfile Identity = FEXCore::CPUID::IdentityProfile::Default, bool InstructionCheckpoints = false);
++    FEXCore::CPUID::IdentityProfile Identity = FEXCore::CPUID::IdentityProfile::Default, bool InstructionCheckpoints = false,
++    InstructionPolicy Policy = InstructionPolicy::Default);
+ 
+   /**
+    * @brief Allows setting up in memory code and other things prior to launchign code execution

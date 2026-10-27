@@ -1,0 +1,161 @@
+diff --git a/FEXCore/Source/Utils/Allocator.cpp b/FEXCore/Source/Utils/Allocator.cpp
+--- a/FEXCore/Source/Utils/Allocator.cpp
++++ b/FEXCore/Source/Utils/Allocator.cpp
+@@ -14,6 +14,7 @@
+ 
+ #include <algorithm>
+ #include <array>
++#include <atomic>
+ #include <cctype>
+ #include <cerrno>
+ #include <charconv>
+@@ -45,9 +46,28 @@
+ using GLIBC_FREE_Hook = void (*)(void*, const void* caller);
+ 
+ static fextl::unique_ptr<Alloc::HostAllocator> Alloc64 {};
++// The region allocator is intrusively stored in its own reservation. Retain it
++// until process exit, as upstream ReleaseAllocatorWorkaround does; the default
++// fextl deleter must not free that object through rpmalloc during static teardown.
++static Alloc::HostAllocator* BoundedAlloc64 {};
++static uintptr_t BoundedBegin {}, BoundedEnd {};
++static std::atomic_flag BoundedSetupClaim = ATOMIC_FLAG_INIT;
++
++static bool FitsBoundedArena(uintptr_t Address, size_t Length) {
++  return Length && Address >= BoundedBegin && Address < BoundedEnd && Length <= BoundedEnd - Address;
++}
++
++static bool ValidBoundedLength(size_t Length) {
++  return Length && Length <= SIZE_MAX - (FEXCore::Utils::FEX_PAGE_SIZE - 1);
++}
+ 
+ static void* FEX_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) {
+-  void* Result = Alloc64->Mmap(addr, length, prot, flags, fd, offset);
++  if (BoundedBegin && (!ValidBoundedLength(length) ||
++      (addr && !FitsBoundedArena(reinterpret_cast<uintptr_t>(addr), FEXCore::AlignUp(length, FEXCore::Utils::FEX_PAGE_SIZE))))) {
++    errno = EINVAL;
++    return MAP_FAILED;
++  }
++  void* Result = (BoundedAlloc64 ? BoundedAlloc64 : Alloc64.get())->Mmap(addr, length, prot, flags, fd, offset);
+   if (Result >= (void*)-4096) {
+     errno = -(uint64_t)Result;
+     return (void*)-1;
+@@ -71,7 +91,12 @@
+ }
+ 
+ static int FEX_munmap(void* addr, size_t length) {
+-  int Result = Alloc64->Munmap(addr, length);
++  if (BoundedBegin && (!ValidBoundedLength(length) || (reinterpret_cast<uintptr_t>(addr) & (FEXCore::Utils::FEX_PAGE_SIZE - 1)) ||
++      !FitsBoundedArena(reinterpret_cast<uintptr_t>(addr), FEXCore::AlignUp(length, FEXCore::Utils::FEX_PAGE_SIZE)))) {
++    errno = EINVAL;
++    return -1;
++  }
++  int Result = (BoundedAlloc64 ? BoundedAlloc64 : Alloc64.get())->Munmap(addr, length);
+ 
+   if (Result != 0) {
+     errno = -Result;
+@@ -93,6 +118,54 @@
+ void SetupHooks(size_t PageSize) {
+   Alloc64 = Alloc::OSAllocator::Create64BitAllocator();
+   AssignHookOverrides(PageSize);
++}
++
++// Single-use embedding initialization, before creating any guest threads. The
++// reservation and allocator are process-owned, as with the legacy hooks.
++bool SetupBoundedHooks(size_t PageSize, size_t ArenaSize, uintptr_t& ArenaBase) {
++  ArenaBase = 0;
++  constexpr size_t MetadataSize = 64 * 1024 * 1024;
++  if (PageSize != FEXCore::Utils::FEX_PAGE_SIZE || sysconf(_SC_PAGESIZE) != static_cast<long>(PageSize) ||
++      ArenaSize < 128ULL * 1024 * 1024 || ArenaSize > (1ULL << 32) || (ArenaSize & (PageSize - 1))) {
++    errno = EINVAL;
++    return false;
++  }
++  if (BoundedSetupClaim.test_and_set()) {
++    errno = EBUSY;
++    return false;
++  }
++  if (Alloc64 || BoundedAlloc64) {
++    BoundedSetupClaim.clear();
++    errno = EBUSY;
++    return false;
++  }
++  // A kernel-chosen reservation cannot replace live host mappings, including
++  // mappings concurrently created by Android. Do not scan and steal VA gaps.
++  void* Reservation = ::mmap(nullptr, ArenaSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
++  const uintptr_t Begin = reinterpret_cast<uintptr_t>(Reservation);
++  if (Reservation == MAP_FAILED || Begin < (1ULL << 32) || Begin > UINTPTR_MAX - ArenaSize) {
++    const int Error = Reservation == MAP_FAILED ? errno : ENOMEM;
++    if (Reservation != MAP_FAILED) ::munmap(Reservation, ArenaSize);
++    BoundedSetupClaim.clear();
++    errno = Error;
++    return false;
++  }
++  // Check the upstream intrusive allocator's initial metadata commitment before
++  // publishing hooks. Its fixed remaps are then wholly inside our reservation.
++  if (::mprotect(Reservation, MetadataSize + PageSize, PROT_READ | PROT_WRITE)) {
++    const int Error = errno;
++    ::munmap(Reservation, ArenaSize);
++    BoundedSetupClaim.clear();
++    errno = Error;
++    return false;
++  }
++  fextl::vector<MemoryRegion> Regions {{Reservation, ArenaSize}};
++  BoundedAlloc64 = Alloc::OSAllocator::Create64BitAllocatorWithRegions(Regions).release();
++  BoundedBegin = Begin;
++  BoundedEnd = Begin + ArenaSize;
++  AssignHookOverrides(PageSize);
++  ArenaBase = Begin;
++  return true;
+ }
+ 
+ void ClearHooks() {
+@@ -376,13 +449,17 @@
+ }
+ 
+ void LockBeforeFork(FEXCore::Core::InternalThreadState* Thread) {
+-  if (Alloc64) {
++  if (BoundedAlloc64) {
++    BoundedAlloc64->LockBeforeFork(Thread);
++  } else if (Alloc64) {
+     Alloc64->LockBeforeFork(Thread);
+   }
+ }
+ 
+ void UnlockAfterFork(FEXCore::Core::InternalThreadState* Thread, bool Child) {
+-  if (Alloc64) {
++  if (BoundedAlloc64) {
++    BoundedAlloc64->UnlockAfterFork(Thread, Child);
++  } else if (Alloc64) {
+     Alloc64->UnlockAfterFork(Thread, Child);
+   }
+ }
+diff --git a/FEXCore/include/FEXCore/Utils/AllocatorHooks.h b/FEXCore/include/FEXCore/Utils/AllocatorHooks.h
+--- a/FEXCore/include/FEXCore/Utils/AllocatorHooks.h
++++ b/FEXCore/include/FEXCore/Utils/AllocatorHooks.h
+@@ -34,6 +34,12 @@
+ 
+ #ifndef _WIN32
+ FEX_DEFAULT_VISIBILITY void SetupHooks(size_t PageSize);
++// Linux/Bionic embedding alternative: reserve only ArenaSize bytes of high VA.
++// Call once before guest threads; failure leaves hooks unchanged. Validation,
++// reservation and initial protection failures are recoverable; upstream fatal
++// allocator failures are not converted to a recoverable allocation contract.
++// Arena ownership lasts until process exit; do not unmap it or reinitialize.
++FEX_DEFAULT_VISIBILITY bool SetupBoundedHooks(size_t PageSize, size_t ArenaSize, uintptr_t& ArenaBase);
+ #else
+ using VirtualNamePtr = void (*)(const char*, const void*, size_t);
+ using VirtualTHPPtr = void (*)(const void*, size_t, THPControl);
+diff --git a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+--- a/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
++++ b/FEXCore/Source/Utils/Allocator/64BitAllocator.cpp
+@@ -125,7 +125,10 @@
+       // This ensures unused pages are zero, while not having the backing pages consuming memory.
+       auto* MemoryAsBytes = reinterpret_cast<uint8_t*>(Region->UsedPages.Memory);
+       const auto TrackingRegionSize = Region->SlabInfo->RegionSize - ManagedSize;
+-      ::madvise(MemoryAsBytes + ManagedSize, TrackingRegionSize, MADV_DONTNEED);
++      // UsedPages begins one header page after Region. Adding ManagedSize to
++      // it would discard one page beyond this owned mapping and corrupt a
++      // neighbouring host allocation. The discard extent is relative to Region.
++      ::madvise(reinterpret_cast<uint8_t*>(Region) + ManagedSize, TrackingRegionSize, MADV_DONTNEED);
+ 
+       // Use madvise to claim WILLNEED on the beginning pages for initial state tracking.
+       // Improves performance of the following MemClear by not doing a page level fault dance for data necessary to track >170TB of used pages.

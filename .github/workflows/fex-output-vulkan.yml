@@ -1,0 +1,44 @@
+name: FEX offscreen output consumer
+on:
+  push:
+    branches: ['experiment/fex-hle-runtime']
+    paths: ['experiments/fex-runtime/graphics/**', 'experiments/fex-runtime/output_packet.*', '.github/workflows/fex-output-vulkan.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  output-vulkan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install software Vulkan and shader validation tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libvulkan-dev mesa-vulkan-drivers glslang-tools spirv-tools vulkan-validationlayers
+      - name: Validate offscreen owned-packet consumer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S experiments/fex-runtime/graphics -B "$RUNNER_TEMP/fex-graphics" -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/fex-graphics" -j 2
+          timeout 30s "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_probe_test" | tee "$RUNNER_TEMP/fex-output-vulkan-bridge.txt"
+          icd=(/usr/share/vulkan/icd.d/lvp_icd*.json)
+          test "${#icd[@]}" = 1
+          VK_ICD_FILENAMES="${icd[0]}" timeout 30s "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_test" "$RUNNER_TEMP/fex-graphics" | tee "$RUNNER_TEMP/fex-output-vulkan.txt"
+          VK_LAYER_PATH=/nonexistent VK_ICD_FILENAMES="${icd[0]}" timeout 30s "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_test" "$RUNNER_TEMP/fex-graphics" --no-validation | tee "$RUNNER_TEMP/fex-output-vulkan-no-validation.txt"
+          VK_ICD_FILENAMES="${icd[0]}" python3 experiments/fex-runtime/graphics/check-negatives.py "$RUNNER_TEMP/fex-graphics/armxbox_output_vulkan_test" "$RUNNER_TEMP/fex-graphics" | tee "$RUNNER_TEMP/fex-output-vulkan-negatives.txt"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fex-output-vulkan-report
+          path: |
+            ${{ runner.temp }}/fex-output-vulkan.txt
+            ${{ runner.temp }}/fex-output-vulkan-negatives.txt
+            ${{ runner.temp }}/fex-output-vulkan-no-validation.txt
+            ${{ runner.temp }}/fex-output-vulkan-bridge.txt
+            ${{ runner.temp }}/fex-graphics/offscreen-*.rgba
+            ${{ runner.temp }}/fex-graphics/offscreen-*.ppm
+            ${{ runner.temp }}/fex-graphics/output.*.spv
+          if-no-files-found: error

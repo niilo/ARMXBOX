@@ -1,0 +1,328 @@
+diff --git a/FEXCore/Source/Interface/Context/Context.cpp b/FEXCore/Source/Interface/Context/Context.cpp
+index c2a01c54b..e7aaf51ad 100644
+--- a/FEXCore/Source/Interface/Context/Context.cpp
++++ b/FEXCore/Source/Interface/Context/Context.cpp
+@@ -16,17 +16,17 @@
+ 
+ namespace FEXCore::Context {
+ fextl::unique_ptr<FEXCore::Context::Context> FEXCore::Context::Context::CreateNewContext(
+-  const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity) {
++  const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints) {
+   if (Identity != FEXCore::CPUID::IdentityProfile::Default && Identity != FEXCore::CPUID::IdentityProfile::XboxReference) {
+     return {};
+   }
+-  if (Identity == FEXCore::CPUID::IdentityProfile::XboxReference &&
++  if ((Identity == FEXCore::CPUID::IdentityProfile::XboxReference || InstructionCheckpoints) &&
+       (FEXCore::Config::Get_IS64BIT_MODE() || FEXCore::Config::Get_DISKCACHE() ||
+        FEXCore::Config::Get_ENABLECODECACHINGWIP() || FEXCore::Config::Get_ENABLECODECACHEVALIDATION())) {
+     // Cached code has no identity-profile key yet. Do not reuse a different ISA identity.
+     return {};
+   }
+-  return fextl::make_unique<FEXCore::Context::ContextImpl>(Features, Identity);
++  return fextl::make_unique<FEXCore::Context::ContextImpl>(Features, Identity, InstructionCheckpoints);
+ }
+ 
+ void FEXCore::Context::ContextImpl::CompileRIP(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP) {
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+index b7f677a65..5c293d6d4 100644
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -140,6 +140,10 @@ public:
+   bool InitCore() override;
+ 
+   void ExecuteThread(FEXCore::Core::InternalThreadState* Thread) override;
++  ExecutionResult ExecuteControlledThread(Core::InternalThreadState* Thread, uint64_t Budget) override;
++  bool RequestStop(Core::InternalThreadState* Thread) override;
++  bool ResetStopRequest(Core::InternalThreadState* Thread) override;
++
+ 
+   bool CheckIfBlockIsCacheable(FEXCore::Core::InternalThreadState&, uint64_t GuestRIP, uint64_t MaxInst) override;
+   void CompileRIP(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP) override;
+@@ -385,6 +389,7 @@ public:
+   FEXCore::HostFeatures HostFeatures;
+   // Fixed before CPUID, translation and code-cache construction. No setter.
+   const FEXCore::CPUID::IdentityProfile CPUIdentity;
++  const bool InstructionCheckpoints;
+   // CPUID depends on HostFeatures so needs to be initialized after that.
+   FEXCore::CPUIDEmu CPUID;
+   FEXCore::HLE::SyscallHandler* SyscallHandler {};
+@@ -397,7 +402,7 @@ public:
+ 
+   SignalDelegator* SignalDelegation {};
+ 
+-  ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity);
++  ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints);
+ 
+   static void ThreadRemoveCodeEntryFromJit(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP);
+ 
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+index eb1bb9788..5e7c5e87d 100644
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -79,9 +79,10 @@ $end_info$
+ #include <xxhash.h>
+ 
+ namespace FEXCore::Context {
+-ContextImpl::ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity)
++ContextImpl::ContextImpl(const FEXCore::HostFeatures& Features, FEXCore::CPUID::IdentityProfile Identity, bool InstructionCheckpoints)
+   : HostFeatures {Features}
+   , CPUIdentity {Identity}
++  , InstructionCheckpoints {InstructionCheckpoints}
+   , CPUID {this}
+   , CodeCache {*this} {
+   if (!Config.Is64BitMode()) {
+@@ -355,7 +356,7 @@ void ContextImpl::SetFlagsFromCompactedEFLAGS(FEXCore::Core::InternalThreadState
+ }
+ 
+ bool ContextImpl::InitCore() {
+-  if (CPUIdentity == FEXCore::CPUID::IdentityProfile::XboxReference &&
++  if ((CPUIdentity == FEXCore::CPUID::IdentityProfile::XboxReference || InstructionCheckpoints) &&
+       (Config.Is64BitMode() || FEXCore::Config::Get_DISKCACHE() || CodeCache.IsGeneratingCache ||
+        FEXCore::Config::Get_ENABLECODECACHINGWIP() || FEXCore::Config::Get_ENABLECODECACHEVALIDATION())) {
+     return false;
+@@ -394,6 +395,10 @@ void ContextImpl::HandleCallback(FEXCore::Core::InternalThreadState* Thread, uin
+ }
+ 
+ void ContextImpl::ExecuteThread(FEXCore::Core::InternalThreadState* Thread) {
++  if (InstructionCheckpoints) {
++    ExecuteControlledThread(Thread, ~0ULL);
++    return;
++  }
+   // Update the thread pointer for Thunk return to the latest.
+   Thread->CurrentFrame->Pointers.ThunkCallbackRet = SignalDelegation->GetThunkCallbackRET();
+ 
+@@ -403,6 +408,58 @@ void ContextImpl::ExecuteThread(FEXCore::Core::InternalThreadState* Thread) {
+   // TODO: This doesn't make sense when the parent thread doesn't outlive its children
+ }
+ 
++ExecutionResult ContextImpl::ExecuteControlledThread(Core::InternalThreadState* Thread, uint64_t Budget) {
++  static_assert(std::atomic_ref<uint32_t>::is_always_lock_free);
++  static_assert(offsetof(Core::CpuStateFrame, ExecutionControlState) % std::atomic_ref<uint32_t>::required_alignment == 0);
++  if (!InstructionCheckpoints || !Thread || Thread->CTX != this) {
++    return ExecutionResult::Unsupported;
++  }
++  auto Frame = Thread->CurrentFrame;
++  auto State = std::atomic_ref(Frame->ExecutionControlState);
++  uint32_t Previous = State.load(std::memory_order_acquire);
++  do {
++    if (Previous & 1) {
++      return ExecutionResult::Busy;
++    }
++  } while (!State.compare_exchange_weak(Previous, Previous | 1, std::memory_order_acq_rel));
++  Frame->ExecutionControlReason = 0;
++  Frame->ExecutionInstructionsRemaining = Budget;
++  Frame->SynchronousFaultData = {};
++  if (State.load(std::memory_order_acquire) & 2) {
++    Frame->ExecutionControlReason = static_cast<uint32_t>(ExecutionResult::StopRequested);
++  } else if (!Budget) {
++    Frame->ExecutionControlReason = static_cast<uint32_t>(ExecutionResult::BudgetExhausted);
++  } else {
++    Frame->Pointers.ThunkCallbackRet = SignalDelegation->GetThunkCallbackRET();
++    Dispatcher->ExecuteDispatch(Frame);
++  }
++  const auto Result = static_cast<ExecutionResult>(Frame->ExecutionControlReason);
++  State.fetch_and(~1U, std::memory_order_release);
++  return Result;
++}
++
++bool ContextImpl::RequestStop(Core::InternalThreadState* Thread) {
++  if (!InstructionCheckpoints || !Thread || Thread->CTX != this) {
++    return false;
++  }
++  std::atomic_ref(Thread->CurrentFrame->ExecutionControlState).fetch_or(2, std::memory_order_release);
++  return true;
++}
++
++bool ContextImpl::ResetStopRequest(Core::InternalThreadState* Thread) {
++  if (!InstructionCheckpoints || !Thread || Thread->CTX != this) {
++    return false;
++  }
++  auto State = std::atomic_ref(Thread->CurrentFrame->ExecutionControlState);
++  uint32_t Previous = State.load(std::memory_order_acquire);
++  do {
++    if (Previous & 1) {
++      return false;
++    }
++  } while (!State.compare_exchange_weak(Previous, 0, std::memory_order_acq_rel));
++  return true;
++}
++
+ void ContextImpl::InitializeCompiler(FEXCore::Core::InternalThreadState* Thread) {
+   Thread->OpDispatcher = fextl::make_unique<FEXCore::IR::OpDispatchBuilder>(this, Thread);
+   Thread->OpDispatcher->SetMultiblock(Config.Multiblock);
+@@ -649,10 +706,14 @@ ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t Gue
+           Thread->OpDispatcher->FlushRegisterCache(true);
+         }
+ 
+-        if (ExtendedDebugInfo || PotentialFault) {
++        if (ExtendedDebugInfo || PotentialFault || InstructionCheckpoints) {
+           Thread->OpDispatcher->_GuestOpcode(InstAddress - GuestRIP);
+         }
+ 
++        if (InstructionCheckpoints) {
++          Thread->OpDispatcher->EmitExecutionCheckpoint(DecodedInfo);
++        }
++
+         if (Config.SMCChecks == FEXCore::Config::CONFIG_SMC_FULL || Block.ForceFullSMCDetection) {
+           auto ExistingCodePtr = reinterpret_cast<uint8_t*>(Block.Entry + BlockInstructionsLength);
+           auto InstAddressReg = Thread->OpDispatcher->_EntrypointOffset(GPRSize, InstAddress - GuestRIP);
+diff --git a/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp b/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp
+index 64de06e31..555f9f871 100644
+--- a/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/MiscOps.cpp
+@@ -112,6 +112,33 @@ void Arm64JITCore::EmitExceptionExit(const IR::BreakDefinition& Reason) {
+   }
+ }
+ 
++DEF_OP(ExecutionCheckpoint) {
++  const auto Op = IROp->C<IR::IROp_ExecutionCheckpoint>();
++  using Frame = Core::CpuStateFrame;
++  ARMEmitter::ForwardLabel Requested, Budget, Stop, Continue;
++  add(ARMEmitter::Size::i64Bit, TMP2, STATE, offsetof(Frame, ExecutionControlState));
++  ldar(TMP1.W(), TMP2);
++  tbnz(TMP1.W(), 1, &Requested);
++  ldr(TMP1, STATE, offsetof(Frame, ExecutionInstructionsRemaining));
++  cbz(ARMEmitter::Size::i64Bit, TMP1, &Budget);
++  sub(ARMEmitter::Size::i64Bit, TMP1, TMP1, 1);
++  str(TMP1, STATE, offsetof(Frame, ExecutionInstructionsRemaining));
++  b(&Continue);
++  BindOrRestart(&Requested);
++  LoadConstant(ARMEmitter::Size::i32Bit, TMP2, static_cast<uint32_t>(Context::ExecutionResult::StopRequested));
++  b(&Stop);
++  BindOrRestart(&Budget);
++  LoadConstant(ARMEmitter::Size::i32Bit, TMP2, static_cast<uint32_t>(Context::ExecutionResult::BudgetExhausted));
++  BindOrRestart(&Stop);
++  str(TMP2.W(), STATE, offsetof(Frame, ExecutionControlReason));
++  str(GetReg(Op->GuestPC).X(), STATE, offsetof(Frame, State.rip));
++  ResetStack();
++  str(ARMEmitter::XReg::zr, STATE, offsetof(Frame, SynchronousFaultData));
++  ldr(TMP1, STATE, offsetof(Frame, Pointers.ThreadStopHandlerSpillSRA));
++  br(TMP1);
++  BindOrRestart(&Continue);
++}
++
+ DEF_OP(GetRoundingMode) {
+   auto Dst = GetReg(Node);
+   mrs(Dst, ARMEmitter::SystemRegister::FPCR);
+diff --git a/FEXCore/Source/Interface/Core/OpcodeDispatcher.h b/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
+index 9b1fe8b27..81dbb6f58 100644
+--- a/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
++++ b/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
+@@ -1186,6 +1186,11 @@ public:
+ 
+   // Raw memory faults leave through the ABI spill path. Materialize deferred
+   // flags and publish the ABI carry convention before a fault can occur.
++  void EmitExecutionCheckpoint(X86Tables::DecodedOp Op) {
++    FlushRegisterCache();
++    _ExecutionCheckpoint(GetRelocatedPC(Op, -Op->InstSize));
++  }
++
+   void FlushForFault() {
+     RectifyCarryInvert(CFInvertedABI);
+     FlushRegisterCache(true);
+diff --git a/FEXCore/Source/Interface/IR/IR.json b/FEXCore/Source/Interface/IR/IR.json
+index 9d01fe58b..85576fca7 100644
+--- a/FEXCore/Source/Interface/IR/IR.json
++++ b/FEXCore/Source/Interface/IR/IR.json
+@@ -324,6 +324,10 @@
+       "Break BreakDefinition:$Reason": {
+         "HasSideEffects": true
+       },
++      "ExecutionCheckpoint GPR:$GuestPC": {
++        "HasSideEffects": true,
++        "Desc": ["Opt-in admission budget and latched stop check at a fully materialized guest boundary"]
++      },
+       "CondBreak GPR:$Condition, GPR:$GuestPC, BreakDefinition:$Reason": {
+         "HasSideEffects": true,
+         "Desc": ["If Condition is nonzero, publish GuestPC and exit with Reason before changing guest results"]
+diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
+index c2b15d338..846de6033 100644
+--- a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
++++ b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
+@@ -319,6 +319,7 @@ static constexpr FlagInfo ClassifyConst(IROps Op) {
+   // A memory-fault boundary observes the flags even when a later instruction
+   // overwrites them on the successful path.
+   case OP_GUESTOPCODE:
++  case OP_EXECUTIONCHECKPOINT:
+   case OP_CONDBREAK: return FlagInfo::Pack({.Read = FLAG_ALL});
+ 
+   case OP_LOADPF: return FlagInfo::Pack({.Read = FLAG_P});
+diff --git a/FEXCore/Source/Interface/IR/Passes/x87StackOptimizationPass.cpp b/FEXCore/Source/Interface/IR/Passes/x87StackOptimizationPass.cpp
+index f205097a1..4451803c8 100644
+--- a/FEXCore/Source/Interface/IR/Passes/x87StackOptimizationPass.cpp
++++ b/FEXCore/Source/Interface/IR/Passes/x87StackOptimizationPass.cpp
+@@ -746,6 +746,14 @@ void X87StackOptimization::Run(IREmitter* Emit) {
+ 
+     IREmit->SetCurrentCodeBlock(BlockNode);
+     for (auto [CodeNode, IROp] : CurrentIR.GetCode(BlockNode)) {
++      if (IROp->Op == OP_EXECUTIONCHECKPOINT) {
++        // A checkpoint can return before the block exit. Publish the virtual
++        // x87 stack/top/tags before observing its admission/stop decision.
++        IREmit->SetWriteCursorBefore(CodeNode);
++        SynchronizeStackValues();
++        FlushCachedRegs();
++        continue;
++      }
+       if (!LoweredX87(IROp->Op)) {
+         continue;
+       }
+diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Core/Context.h
+index 4fd7499df..bd5dff7e8 100644
+--- a/FEXCore/include/FEXCore/Core/Context.h
++++ b/FEXCore/include/FEXCore/Core/Context.h
+@@ -34,6 +34,14 @@ class IREmitter;
+ } // namespace FEXCore::IR
+ 
+ namespace FEXCore::Context {
++enum class ExecutionResult : uint32_t {
++  GuestExit = 0,
++  BudgetExhausted = 1,
++  StopRequested = 2,
++  Busy = 3,
++  Unsupported = 4,
++};
++
+ 
+ enum OperatingMode {
+   MODE_32BIT,
+@@ -58,7 +66,7 @@ public:
+    */
+   FEX_DEFAULT_VISIBILITY static fextl::unique_ptr<FEXCore::Context::Context> CreateNewContext(
+     const FEXCore::HostFeatures& Features,
+-    FEXCore::CPUID::IdentityProfile Identity = FEXCore::CPUID::IdentityProfile::Default);
++    FEXCore::CPUID::IdentityProfile Identity = FEXCore::CPUID::IdentityProfile::Default, bool InstructionCheckpoints = false);
+ 
+   /**
+    * @brief Allows setting up in memory code and other things prior to launchign code execution
+@@ -75,6 +83,15 @@ public:
+    */
+   FEX_DEFAULT_VISIBILITY virtual void ExecuteThread(FEXCore::Core::InternalThreadState* Thread) = 0;
+ 
++  // Opt-in IA-32 diagnostic contract. Budget counts instruction admissions, not
++  // retired instructions/cycles. No automatic clearing of a latched stop request.
++  // Thread lifetime belongs to the frontend; join the execution owner before
++  // reading state, resetting requests or destroying the thread/context.
++  FEX_DEFAULT_VISIBILITY virtual ExecutionResult ExecuteControlledThread(Core::InternalThreadState* Thread, uint64_t Budget) = 0;
++  FEX_DEFAULT_VISIBILITY virtual bool RequestStop(Core::InternalThreadState* Thread) = 0;
++  FEX_DEFAULT_VISIBILITY virtual bool ResetStopRequest(Core::InternalThreadState* Thread) = 0;
++
++
+   FEX_DEFAULT_VISIBILITY virtual bool CheckIfBlockIsCacheable(FEXCore::Core::InternalThreadState& Thread, uint64_t GuestRIP, uint64_t MaxInst) = 0;
+   FEX_DEFAULT_VISIBILITY virtual void CompileRIP(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP) = 0;
+   FEX_DEFAULT_VISIBILITY virtual void CompileRIPCount(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, uint64_t MaxInst) = 0;
+diff --git a/FEXCore/include/FEXCore/Core/CoreState.h b/FEXCore/include/FEXCore/Core/CoreState.h
+index 2b1e029e1..738c3b895 100644
+--- a/FEXCore/include/FEXCore/Core/CoreState.h
++++ b/FEXCore/include/FEXCore/Core/CoreState.h
+@@ -438,6 +438,11 @@ struct CpuStateFrame {
+   uint32_t SuspendDoorbell {};
+ #endif
+ 
++  // Running=1, latched stop=2. Concurrent access uses atomic_ref / JIT LDAR.
++  alignas(4) uint32_t ExecutionControlState {};
++  uint32_t ExecutionControlReason {};
++  uint64_t ExecutionInstructionsRemaining {};
++
+   // Pointers that the JIT needs to load to remove relocations
+   JITPointers Pointers;
+ };

@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/FEX-Emu/FEX.git",
+  "commit": "4e2b509a42b7762a48c407d6a59bb897dca1ded8",
+  "submodules": {
+    "External/fmt": "c07e2aa4b130b4fd359a1c6455a5201b17af01fa",
+    "External/rpmalloc": "ed227446afce6ff505b312bae1e10a3daaeeea39",
+    "External/unordered_dense": "3234af2c03549bc85656bfd3a86993bf1cd8aef1",
+    "External/xxhash": "e626a72bc2321cd320e953a0ccf1584cad60f363",
+    "External/vixl": "585d860b12cdfc3a72f5fdad5e02e4d50a64c014"
+  }
+}
