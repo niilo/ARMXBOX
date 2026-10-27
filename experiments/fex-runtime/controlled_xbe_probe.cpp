@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "controlled_xbe.h"
+#include "output_packet.h"
+#include "output_probe.h"
 #include "execution_boundary.h"
 #include "guest_reservation.h"
 #include <FEXCore/Core/HostFeatures.h>
@@ -501,6 +503,266 @@ runControlledXbeProbe(const FEXCore::HostFeatures &features,
     if (log)
         log("XBE: engine stopped; destroying context before owned image "
             "cleanup");
+    return result;
+}
+} // namespace armxbox
+
+namespace armxbox {
+namespace {
+constexpr const char *OutputLabels[] = {
+    "output XBE profile isolates admitted producer code",
+    "output producer owns guarded image and stack",
+    "guest output descriptor and typed payloads match reference",
+    "output capture requires valid stopped completion metadata",
+    "output capture rejects unowned malformed and replayed records",
+    "output snapshot is immutable after source changes",
+    "warm guest production publishes ordered sequence two",
+    "output queue refuses saturation without changing snapshots",
+    "output budget stop cannot publish an incomplete packet",
+    "output latched stop prevents publication before guest entry",
+    "output packets remain valid after guest image cleanup",
+    "output leases retire FIFO and reject stale generations",
+};
+static_assert(std::size(OutputLabels) == OutputCheckCount);
+} // namespace
+const char *outputProbeCheckLabel(unsigned i)
+{
+    return OutputLabels[i];
+}
+OutputProbeResults runOutputProbe(const FEXCore::HostFeatures &features,
+                                  FEXCore::HLE::SyscallHandler *calls,
+                                  void (*log)(const char *))
+{
+    OutputProbeResults result;
+    OutputQueue queue;
+    OutputLease first;
+    const auto image = generateControlledXbe(XbeProfile::Output);
+    XbePlan plan, other;
+    auto badImage = image;
+    badImage[0x1200 + OutputProgramBytes - 2] ^= 1;
+    result.passed[0] =
+        admitControlledXbe(image, plan, XbeProfile::Output) &&
+        !admitControlledXbe(image, other) &&
+        !admitControlledXbe(badImage, other, XbeProfile::Output) &&
+        !admitControlledXbe(image, other, XbeProfile(999));
+    if (!result.passed[0])
+        return result;
+    // Queue storage outlives every guest/thread/context mapping in this scope.
+    auto produce = [&] {
+        Loaded loaded(log);
+        if (!loaded.load(image, plan)) {
+            loaded.detail(result.detail, sizeof result.detail, false, false);
+            return false;
+        }
+        result.passed[1] =
+            protection(XbeBase, "r--") && protection(plan.entry, "r--") &&
+            protection(XbeFill, "rw-") && protection(StackVA, "---") &&
+            protection(StackBegin, "rw-") && protection(StackEnd, "---");
+        ImageCalls imageCalls(calls);
+        FEXCore::SignalDelegator signals;
+        auto context = Context::CreateNewContext(
+            features, FEXCore::CPUID::IdentityProfile::XboxReference, true,
+            FEXCore::Context::InstructionPolicy::XboxReferenceSubset);
+        if (!context)
+            return false;
+        context->SetSignalDelegator(&signals);
+        context->SetSyscallHandler(&imageCalls);
+        if (!context->InitCore())
+            return false;
+        Thread *thread = context->CreateThread(nullptr);
+        FEXCore::Allocator::RegisterTLSData(thread);
+        constexpr size_t Shadow = Thread::CALLRET_STACK_SIZE;
+        void *shadow =
+            FEXCore::Allocator::mmap(nullptr, Shadow + 2 * Page, PROT_NONE,
+                                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (shadow == MAP_FAILED ||
+            ::mprotect(static_cast<char *>(shadow) + Page, Shadow,
+                       PROT_READ | PROT_WRITE)) {
+            if (shadow != MAP_FAILED)
+                FEXCore::Allocator::munmap(shadow, Shadow + 2 * Page);
+            FEXCore::Allocator::UninstallTLSData(thread);
+            context->DestroyThread(thread);
+            return false;
+        }
+        thread->CallRetStackBase = static_cast<char *>(shadow) + Page;
+        auto &frame = *thread->CurrentFrame;
+        auto &state = frame.State;
+        FEXCore::Core::CPUState::gdt_segment gdt[32]{};
+        gdt[1].D = 1;
+        state.segment_arrays[0] = gdt;
+        state.cs_idx = 8;
+        frame.Pointers.GuestSignal_SIGILL =
+            frame.Pointers.ThreadStopHandlerSpillSRA;
+        frame.Pointers.GuestSignal_SIGTRAP =
+            frame.Pointers.ThreadStopHandlerSpillSRA;
+        frame.Pointers.GuestSignal_SIGSEGV =
+            frame.Pointers.ThreadStopHandlerSpillSRA;
+        auto prepare = [&](unsigned serial) {
+            context->ResetStopRequest(thread);
+            std::memset(thread->CallRetStackBase, 0, Shadow);
+            state.callret_sp =
+                reinterpret_cast<uintptr_t>(thread->CallRetStackBase) +
+                Shadow / 4;
+            std::memset(state.gregs, 0, sizeof state.gregs);
+            state.gregs[0] = serial;
+            state.gregs[4] = InitialSP;
+            state.rip = plan.entry;
+            state.mxcsr = 0x1f80;
+            state.FCW = 0x37f;
+            context->SetFlagsFromCompactedEFLAGS(thread, 0x202);
+        };
+        auto enter = [&](uint64_t budget) {
+            char stage[160];
+            std::snprintf(stage, sizeof stage,
+                          "Output entry%u pc=%llx budget=%llu", result.entries,
+                          (unsigned long long)state.rip,
+                          (unsigned long long)budget);
+            if (log)
+                log(stage);
+            ControlledInvocation invocation{ context.get(), budget };
+            result.abiMask &= executeControlledGuest(invocation, thread);
+            ++result.entries;
+            std::snprintf(
+                stage, sizeof stage,
+                "Output return%u reason=%u pc=%llx trap=%u remaining=%llu "
+                "abi=%llx",
+                result.entries, unsigned(invocation.reason),
+                (unsigned long long)state.rip,
+                frame.SynchronousFaultData.TrapNo,
+                (unsigned long long)frame.ExecutionInstructionsRemaining,
+                (unsigned long long)result.abiMask);
+            if (log)
+                log(stage);
+            return invocation.reason;
+        };
+        auto completed = [&](Reason reason) {
+            const auto &f = frame.SynchronousFaultData;
+            return reason == Reason::GuestExit &&
+                   state.rip == XbeOutputEntry + OutputProgramBytes - 1 &&
+                   state.gregs[4] == InitialSP &&
+                   f.FaultToTopAndGeneratedException && f.Signal == SIGSEGV &&
+                   f.TrapNo == 13 && !f.err_code && f.si_code == 0x80;
+        };
+        auto view = [&](bool stopped, bool cancelled = false) {
+            return StoppedOutputView{
+                XbeFill,
+                { reinterpret_cast<const uint8_t *>(uintptr_t(XbeFill)), Page },
+                1,
+                stopped,
+                cancelled
+            };
+        };
+        prepare(1);
+        auto reason = enter(4096);
+        const bool done = completed(reason);
+        result.passed[3] = done;
+        OutputQueue gate;
+        result.passed[3] &=
+            gate.submit(view(false), XbeFill) == OutputError::NotStopped;
+        if (done) {
+            ++state.rip;
+            result.passed[3] &= !completed(reason) &&
+                                gate.submit(view(completed(reason)), XbeFill) ==
+                                    OutputError::NotStopped;
+            --state.rip;
+            const auto trap = frame.SynchronousFaultData.TrapNo;
+            frame.SynchronousFaultData.TrapNo = 6;
+            result.passed[3] &= !completed(reason);
+            frame.SynchronousFaultData.TrapNo = trap;
+        }
+        const bool captured =
+            queue.submit(view(done), XbeFill) == OutputError::None;
+        first = queue.acquire();
+        const auto *snapshot = queue.get(first);
+        result.passed[2] =
+            done && captured && snapshot && outputMatches(*snapshot, 1) &&
+            frame.ExecutionInstructionsRemaining == 4096 - OutputInstructions;
+        result.passed[4] = gate.submit({ XbeFill, {}, 1, true, false },
+                                       XbeFill) == OutputError::Bounds;
+        if (done) {
+            auto *data = reinterpret_cast<uint8_t *>(uintptr_t(XbeFill));
+            const uint32_t commit = 0;
+            std::memcpy(data + 44, &commit, 4);
+            result.passed[4] &=
+                gate.submit(view(true), XbeFill) == OutputError::Incomplete;
+            const uint32_t restore = OutputCommit;
+            std::memcpy(data + 44, &restore, 4);
+            const uint32_t outside = 0xfffffff0, owned = XbeFill + 0xa0;
+            std::memcpy(data + 20, &outside, 4);
+            result.passed[4] &=
+                gate.submit(view(true), XbeFill) == OutputError::Bounds;
+            std::memcpy(data + 20, &owned, 4);
+            result.passed[4] &=
+                queue.submit(view(true), XbeFill) == OutputError::Sequence;
+            std::memset(data + 0x80, 0x6d, 0x100);
+        }
+        result.passed[5] = snapshot && outputMatches(*snapshot, 1);
+        prepare(2);
+        reason = enter(4096);
+        result.passed[6] =
+            completed(reason) && state.gregs[0] == 2 &&
+            frame.ExecutionInstructionsRemaining == 4096 - OutputInstructions &&
+            queue.submit(view(completed(reason)), XbeFill) == OutputError::None;
+        result.passed[7] = queue.size() == 2 && !queue.reset(2) &&
+                           queue.submit({ 0, {}, 0, false, true },
+                                        0xffffffff) == OutputError::Full &&
+                           snapshot && outputMatches(*snapshot, 1);
+        prepare(3);
+        reason = enter(3);
+        OutputQueue partial;
+        result.passed[8] =
+            reason == Reason::BudgetExhausted &&
+            state.rip == XbeOutputEntry + 25 && state.gregs[0] == 3 &&
+            !completed(reason) && !frame.ExecutionInstructionsRemaining &&
+            word(XbeFill + 44) == 0 &&
+            partial.submit(view(completed(reason)), XbeFill) ==
+                OutputError::NotStopped &&
+            partial.submit(view(true), XbeFill) == OutputError::Incomplete &&
+            !partial.size();
+        prepare(4);
+        const bool requested = context->RequestStop(thread);
+        reason = enter(4096);
+        result.passed[9] = requested && reason == Reason::StopRequested &&
+                           state.rip == plan.entry &&
+                           frame.ExecutionInstructionsRemaining == 4096 &&
+                           partial.submit(view(completed(reason), true),
+                                          XbeFill) == OutputError::NotStopped &&
+                           partial.submit(view(true, true), XbeFill) ==
+                               OutputError::Cancelled &&
+                           !partial.size();
+        context->ResetStopRequest(thread);
+        FEXCore::Allocator::UninstallTLSData(thread);
+        context->DestroyThread(thread);
+        FEXCore::Allocator::munmap(shadow, Shadow + 2 * Page);
+        return true;
+    };
+    if (log)
+        log("Output: producing owned vertex texture and PCM packet");
+    const bool produced =
+        produce(); // Thread/context/image destruct before packet readback.
+    if (produced) {
+        if (log)
+            log("Output: guest mappings destroyed; replacing source with "
+                "canary");
+        void *replacement = reserve(XbeBase, XbeImageSize);
+        if (replacement &&
+            !::mprotect(replacement, XbeImageSize, PROT_READ | PROT_WRITE)) {
+            std::memset(replacement, 0x39, XbeImageSize);
+            const auto *p = queue.get(first);
+            result.passed[10] = p && outputMatches(*p, 1);
+        }
+        if (replacement)
+            ::munmap(replacement, XbeImageSize);
+        const bool retired = queue.retire(first) && !queue.get(first);
+        const auto second = queue.acquire();
+        const auto *p = queue.get(second);
+        result.passed[11] = retired && p && outputMatches(*p, 2) &&
+                            queue.retire(second) && !queue.get(second) &&
+                            queue.reset(2) &&
+                            queue.submit({ 0, {}, 1, true, false }, 0) ==
+                                OutputError::Generation &&
+                            !queue.get(first);
+    }
     return result;
 }
 } // namespace armxbox

@@ -1,3 +1,4 @@
+#include "output_probe.h"
 #include "controlled_xbe.h"
 #include "diagnostic.h"
 #include "diagnostic_trace.h"
@@ -81,7 +82,7 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
   if (!output || !capacity) return 1;
   output[0] = 0;
   Report report{output, capacity};
-  report.line("ARMXBOX FEX Phase 0.11.1; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
+  report.line("ARMXBOX FEX Phase 0.12a; pin 4e2b509a42b7762a48c407d6a59bb897dca1ded8\n");
 #ifdef VIXL_SIMULATOR
   report.line("Execution: host VIXL simulator; NOT Android device proof\n");
 #else
@@ -564,6 +565,16 @@ int armxbox_fex_selftest(char* output, size_t capacity) {
 #endif
   report.line("Controlled XBE entries: %u\n", xbe.entries);
   if (xbe.detail[0]) report.line("Controlled XBE detail: %s\n", xbe.detail);
+  const auto packetOutput = armxbox::runOutputProbe(features, &calls, diagnosticLog);
+  for (unsigned i=0; i<packetOutput.passed.size(); ++i) {
+    report.check(armxbox::outputProbeCheckLabel(i),packetOutput.passed[i]);
+  }
+#ifdef __aarch64__
+  report.check("output producer entries preserve all six native ABI witnesses",
+               packetOutput.entries==4 && packetOutput.abiMask==0x3f);
+#endif
+  report.line("Output producer entries: %u\n",packetOutput.entries);
+  if(packetOutput.detail[0]) report.line("Output detail: %s\n",packetOutput.detail);
   const auto afterArena = armxbox::finishHostArena(arena.base, arena.size);
   report.check("host allocations and threads still coexist after all CPU fixtures", afterArena[0]);
   report.check("bounded arena still rejects exhaustion and services small allocations", afterArena[1]);

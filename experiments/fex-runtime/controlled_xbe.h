@@ -21,13 +21,16 @@ constexpr uint32_t XbeFill = XbeBase + 0x3000;
 constexpr uint32_t XbeReturn = XbeEntry + 15;
 constexpr uint32_t XbeCompletion = XbeEntry + 25;
 using GeneratedXbe = std::array<uint8_t, 0x3000>;
-GeneratedXbe generateControlledXbe();
+enum class XbeProfile { Fill, Output };
+constexpr uint32_t XbeOutputEntry = XbeEntry + 0x200;
+GeneratedXbe generateControlledXbe(XbeProfile profile = XbeProfile::Fill);
 struct XbePlan {
     uint32_t entry = 0, thunk = 0;
     std::array<uint32_t, 2> rawOffset{}, rawSize{}, virtualOffset{},
         virtualSize{};
 };
-bool admitControlledXbe(std::span<const uint8_t>, XbePlan &);
+bool admitControlledXbe(std::span<const uint8_t>, XbePlan &,
+                        XbeProfile profile = XbeProfile::Fill);
 std::array<bool, 4> controlledXbeAdmissionControls();
 constexpr unsigned XbeCheckCount = 15;
 struct ControlledXbeResults {

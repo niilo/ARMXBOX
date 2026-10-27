@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "controlled_xbe.h"
+#include "output_packet.h"
 #include <cstdio>
 int main(int argc, char **argv)
 {
@@ -32,7 +33,32 @@ int main(int argc, char **argv)
             return 1;
     }
     std::puts("PASS XBE seeded mutation and bounded-plan controls: 4000 cases");
-    if (argc == 2) {
+    const auto output =
+        armxbox::generateControlledXbe(armxbox::XbeProfile::Output);
+    armxbox::XbePlan outputPlan;
+    if (!armxbox::admitControlledXbe(output, outputPlan,
+                                     armxbox::XbeProfile::Output) ||
+        outputPlan.entry != armxbox::XbeOutputEntry ||
+        armxbox::admitControlledXbe(output, outputPlan))
+        return 1;
+    for (size_t length = 0; length < output.size(); ++length) {
+        if (armxbox::admitControlledXbe(std::span(output).first(length),
+                                        outputPlan,
+                                        armxbox::XbeProfile::Output) ||
+            outputPlan.entry)
+            return 1;
+    }
+    for (size_t i = 0; i < armxbox::OutputProgramBytes; ++i) {
+        auto corrupt = output;
+        corrupt[0x1200 + i] ^= 1;
+        if (armxbox::admitControlledXbe(corrupt, outputPlan,
+                                        armxbox::XbeProfile::Output) ||
+            outputPlan.entry)
+            return 1;
+    }
+    std::puts("PASS output XBE profile isolation, all short files and 706 "
+              "opcode mutations");
+    if (argc >= 2) {
         const auto bytes = armxbox::generateControlledXbe();
         FILE *f = std::fopen(argv[1], "wb");
         if (!f)
@@ -40,6 +66,15 @@ int main(int argc, char **argv)
         const auto count = std::fwrite(bytes.data(), 1, bytes.size(), f);
         const int close = std::fclose(f);
         if (count != bytes.size() || close)
+            return 1;
+    }
+    if (argc >= 3) {
+        FILE *f = std::fopen(argv[2], "wb");
+        if (!f)
+            return 1;
+        const auto count = std::fwrite(output.data(), 1, output.size(), f);
+        const auto close = std::fclose(f);
+        if (count != output.size() || close)
             return 1;
     }
 }

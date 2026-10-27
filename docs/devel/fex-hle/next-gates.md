@@ -110,3 +110,7 @@ checkpoint. Use the same Pocket S power mode, course, resolution and driver for
 reference comparisons. Measure frame times, CPU/GPU work, memory and audio
 underruns. Prior reference runs had mild crackling. No synthetic throughput or
 successful fixture count establishes a title FPS improvement.
+
+[Phase0.12a](phase12a.md) implements the guest graphics/PCM packet boundary.
+Its 206-check native gate is pending. Offscreen rendering, presentation and PCM
+playback remain the next integration work; no title performance is established.

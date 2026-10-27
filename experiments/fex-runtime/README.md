@@ -41,7 +41,7 @@ bash experiments/fex-runtime/scripts/package-apk.sh \
 ```
 
 The `FEX Phase 0 diagnostic` GitHub Actions workflow runs the host fixtures first,
-then builds and uploads `armxbox-fex-phase0.11.1-debug.apk`. It uses read-only GitHub
+then builds and uploads `armxbox-fex-phase0.12a-debug.apk`. It uses read-only GitHub
 permissions and no production signing secrets. Its debug key is generated for
 each fresh output directory; uninstall an older probe if signatures differ.
 
@@ -52,14 +52,16 @@ Force-stop and relaunch to repeat; allocator/configuration ownership is currentl
 one-shot and process-wide. Capture `adb logcat -s ARMXBOX-FEX` if it crashes before
 returning a report. A hang/crash is a failed probe, never an implied success.
 
-The current build is **phase0.11.1/code15**: a
-[strictly admitted generated XBE and one typed kernel import](../../docs/devel/fex-hle/phase11.md).
-Its [Pocket S report](../../docs/devel/fex-hle/phase111-android-report.md) passes
-all **193 native checks**, seven XBE entries, 113 policy entries and 27 bridge
-entries. The new range mapped directly and the old range overlaps Dalvik in
-this run. Cloud fixtures pass 170 checks in both modes and a forced hint-only
-mapping run. This accepts the fixed generated profile, not retail XBE loading.
-Next: [graphics/PCM ownership and integration](../../docs/devel/fex-hle/phase12-plan.md).
+The current build is **phase0.12a/code16**: [guest-produced graphics/PCM packets
+and immutable ownership](../../docs/devel/fex-hle/phase12a.md). Cloud runs pass
+182 checks in normal, single-block and forced hint-only modes. Native acceptance
+is pending: expect **206 checks**, four output entries, seven Fill XBE entries,
+113 policy entries and 27 native bridge entries, with all six ABI witnesses.
+This candidate does not display graphics or play PCM yet.
+
+The last accepted [Pocket S report](../../docs/devel/fex-hle/phase111-android-report.md)
+is phase0.11.1/code15 with 193 native checks. This accepts its fixed generated
+profile, not retail XBE loading. Next: [offscreen Vulkan and PCM integration](../../docs/devel/fex-hle/phase12-plan.md).
 
 [Phase0.10.2's Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md)
 passes all 177 prior native checks, clearing the diagnostic crash for that run.

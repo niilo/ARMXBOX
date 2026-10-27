@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "controlled_xbe.h"
+#include "output_packet.h"
 #include <algorithm>
 #include <cstring>
 namespace armxbox {
@@ -38,7 +39,7 @@ constexpr auto Text = [] {
     return text;
 }();
 } // namespace
-GeneratedXbe generateControlledXbe()
+GeneratedXbe generateControlledXbe(XbeProfile profile)
 {
     GeneratedXbe bytes{};
     put(bytes, 0, 0x48454258); // XBEH, little endian.
@@ -49,7 +50,8 @@ GeneratedXbe generateControlledXbe()
     put(bytes, 0x118, XbeBase + 0x300);
     put(bytes, 0x11c, 2);
     put(bytes, 0x120, XbeBase + 0x180);
-    put(bytes, 0x128, XbeEntry ^ EntryKey);
+    put(bytes, 0x128,
+        (profile == XbeProfile::Output ? XbeOutputEntry : XbeEntry) ^ EntryKey);
     put(bytes, 0x130, 0x2000);
     put(bytes, 0x158, XbeThunk ^ ThunkKey);
     put(bytes, 0x300, 0x1d0);
@@ -68,11 +70,20 @@ GeneratedXbe generateControlledXbe()
     std::copy(std::begin(Text), std::end(Text), bytes.begin() + 0x1000);
     bytes[0x1100] = 0xf4;
     put(bytes, 0x2000, 0x80000000U | Ordinal);
+    if (profile == XbeProfile::Output) {
+        const auto code = outputProgram(XbeFill);
+        std::copy(code.begin(), code.end(), bytes.begin() + 0x1200);
+    }
     return bytes;
 }
-bool admitControlledXbe(std::span<const uint8_t> bytes, XbePlan &out)
+bool admitControlledXbe(std::span<const uint8_t> bytes, XbePlan &out,
+                        XbeProfile profile)
 {
     out = {};
+    if (profile != XbeProfile::Fill && profile != XbeProfile::Output)
+        return false;
+    const auto entry =
+        profile == XbeProfile::Output ? XbeOutputEntry : XbeEntry;
     // Fixed bounds are the admission profile, not unchecked file assertions.
     // No pointer casts or absolute guest pointer dereferences occur here.
     if (bytes.size() != 0x3000 || read(bytes, 0) != 0x48454258 ||
@@ -81,7 +92,7 @@ bool admitControlledXbe(std::span<const uint8_t> bytes, XbePlan &out)
         !zeros(bytes, 4, 0x104) || read(bytes, 0x114) ||
         read(bytes, 0x118) != XbeBase + 0x300 || read(bytes, 0x11c) != 2 ||
         read(bytes, 0x120) != XbeBase + 0x180 || read(bytes, 0x124) ||
-        (read(bytes, 0x128) ^ EntryKey) != XbeEntry || read(bytes, 0x12c) ||
+        (read(bytes, 0x128) ^ EntryKey) != entry || read(bytes, 0x12c) ||
         read(bytes, 0x130) != 0x2000 || !zeros(bytes, 0x134, 0x158) ||
         (read(bytes, 0x158) ^ ThunkKey) != XbeThunk ||
         !zeros(bytes, 0x15c, 0x178) || read(bytes, 0x300) != 0x1d0 ||
@@ -89,7 +100,7 @@ bool admitControlledXbe(std::span<const uint8_t> bytes, XbePlan &out)
         std::memcmp(bytes.data() + 0x700, "ARMXBOX generated XBE v1", 25))
         return false;
     XbePlan plan;
-    plan.entry = XbeEntry;
+    plan.entry = entry;
     plan.thunk = XbeThunk;
     for (unsigned i = 0; i < 2; ++i) {
         const size_t at = 0x180 + 56 * i;
@@ -116,10 +127,19 @@ bool admitControlledXbe(std::span<const uint8_t> bytes, XbePlan &out)
     // are admitted. No arbitrary x86 bytes, TLS, libraries or extra services.
     if (std::memcmp(bytes.data() + 0x1000, Text.data(), Text.size()) ||
         !zeros(bytes, 0x1000 + Text.size(), 0x1100) || bytes[0x1100] != 0xf4 ||
-        !zeros(bytes, 0x1101, 0x2000) ||
         read(bytes, 0x2000) != (0x80000000U | Ordinal) ||
         !zeros(bytes, 0x2004, 0x3000))
         return false;
+    if (profile == XbeProfile::Fill) {
+        if (!zeros(bytes, 0x1101, 0x2000))
+            return false;
+    } else {
+        const auto code = outputProgram(XbeFill);
+        if (!zeros(bytes, 0x1101, 0x1200) ||
+            std::memcmp(bytes.data() + 0x1200, code.data(), code.size()) ||
+            !zeros(bytes, 0x1200 + code.size(), 0x2000))
+            return false;
+    }
     out = plan;
     return true;
 }
