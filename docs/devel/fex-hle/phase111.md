@@ -3,7 +3,10 @@
 The [Phase0.11 native report](phase11-android-report.md) retains all 177 inherited
 PASS checks and four new admission checks, but image/stack setup fails before
 any XBE engine entry. The exact reservation/protection stage and errno are absent;
-the device cause is not confirmed and native XBE acceptance remains blocked.
+the original error was not established. The follow-up
+[Pocket S report](phase111-android-report.md) now passes all 193 checks and
+seven XBE entries on the new layout. It observes a Dalvik overlap at the old
+range and uses direct NOREPLACE successfully; the hint fallback is cloud-tested.
 
 The new fixed generated profile uses image base **0x00010000** and guarded stack
 reservation **0x00020000**, replacing 0x20000000/0x20010000. The old image range
@@ -57,7 +60,7 @@ production app/backend path changes.
 
 The APK is **phase0.11.1/code15**. Expect all **193 native PASS checks**, **seven
 XBE entries**, **113 policy entries** and **27 native bridge entries**. These
-remain unverified until the Pocket S run. If it fails, the complete report now
-identifies the setup stage and errors; if the process closes, reopen and Share
-recovered report before starting another run. No title FPS or general XBE/HLE
+pass in the [Pocket S report](phase111-android-report.md). Future setup failures
+retain stage/error reporting; if a diagnostic closes, reopen and Share recovered
+report before another run. No title FPS or general XBE/HLE
 acceptance is inferred from the cloud fixtures.

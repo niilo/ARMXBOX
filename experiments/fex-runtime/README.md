@@ -54,11 +54,12 @@ returning a report. A hang/crash is a failed probe, never an implied success.
 
 The current build is **phase0.11.1/code15**: a
 [strictly admitted generated XBE and one typed kernel import](../../docs/devel/fex-hle/phase11.md).
-Expect **193 native checks**, seven XBE entries, 113 instruction-policy entries
-and 27 bridge entries. [Phase0.11 setup was blocked](../../docs/devel/fex-hle/phase11-android-report.md)
-on Pocket S. The [mapping follow-up](../../docs/devel/fex-hle/phase111.md) still
-requires native execution; complete cloud
-fixtures expect 170 checks in both modes. This is not retail XBE admission.
+Its [Pocket S report](../../docs/devel/fex-hle/phase111-android-report.md) passes
+all **193 native checks**, seven XBE entries, 113 policy entries and 27 bridge
+entries. The new range mapped directly and the old range overlaps Dalvik in
+this run. Cloud fixtures pass 170 checks in both modes and a forced hint-only
+mapping run. This accepts the fixed generated profile, not retail XBE loading.
+Next: [graphics/PCM ownership and integration](../../docs/devel/fex-hle/phase12-plan.md).
 
 [Phase0.10.2's Pocket S report](../../docs/devel/fex-hle/phase102-android-report.md)
 passes all 177 prior native checks, clearing the diagnostic crash for that run.

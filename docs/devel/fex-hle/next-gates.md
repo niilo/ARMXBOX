@@ -1,9 +1,9 @@
 # Remaining CPU embedding gates
 
-Current immediate gate: [Phase0.11.1 generated XBE native execution](phase111.md)
-with 193 checks and seven image entries. [Phase0.10.2 native acceptance](phase102-android-report.md) passes all
-177 checks and 113 policy entries, clearing the diagnostic regression for this
-run. Broader retail/runtime admission remains gated by the contracts below.
+Current milestone: [controlled graphics/PCM integration](phase12-plan.md).
+[Phase0.11.1 native acceptance](phase111-android-report.md) passes all 193
+checks, seven XBE entries, 113 policy entries and 27 native bridge entries.
+Broader retail/runtime admission remains gated by the contracts below.
 
 These are findings from the pinned engine and the reference backend, not
 implemented features or performance results. The [Phase0.4.1 native report](phase041-android-report.md)
@@ -91,10 +91,12 @@ checkpoints, budgets and latched stop requests for constructed loops. The
 [Pocket S report](phase08-android-report.md) passes all 129 checks; the scoped
 contract is accepted. [Phase0.9](phase09.md) adds a constructed bounded exit-based bridge/callback
 diagnostic; the [Pocket S report](phase09-android-report.md) passes all 148
-cumulative checks. [Phase0.10](phase10.md) implements the first reference-backed
-instruction rejection subset, but its device run closes immediately. Native
-acceptance is withheld; the [progress-recovery revision](phase101.md) is the
-next diagnostic step before controlled XBE work. The broader
+cumulative checks. [Phase0.10](phase10.md) implements the first reference-backed instruction
+rejection subset; after its allocation regression, [Phase0.10.2](phase102-android-report.md)
+passes all 177 native checks. [Phase0.11.1](phase111-android-report.md) passes
+all 193 checks including a controlled XBE, typed import and owned image/stack.
+This is scoped constructed-image acceptance, not arbitrary application execution.
+The broader
 [instruction/virtual-state policy](phase10-plan.md) remains open. Wider callback/fault/REP/runtime bounds are not established. Add a demonstrated bounded return mechanism
 before accepting arbitrary guest
 entry points. Constructed terminating fixtures and the CI process timeout do not

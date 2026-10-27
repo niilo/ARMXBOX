@@ -29,8 +29,9 @@ subset. After a native allocation regression, [Phase0.10.2](phase102.md) passes
 This accepts the scoped increment on Pocket S. [Phase0.11](phase11.md) now
 implements a strictly admitted generated XBE, one typed kernel import and finite
 execution. Its [native report](phase11-android-report.md) stops at mapping setup;
-[Phase0.11.1](phase111.md) adds mapping compatibility/diagnostics and retains the
-193-check native gate. The broader
+[Phase0.11.1](phase111.md) now passes [all 193 native checks](phase111-android-report.md),
+including seven XBE entries and their ABI witnesses. The next scoped milestone
+is the [graphics/PCM ownership and integration plan](phase12-plan.md). The broader
 [virtual-state plan](phase10-plan.md) remains open. General execution,
 callback/fault, instruction/privilege and timer contracts remain open.
 Broad HLE has not started. See the
